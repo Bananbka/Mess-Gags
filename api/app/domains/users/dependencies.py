@@ -1,6 +1,5 @@
 ﻿import jwt
-from aiohttp import payload
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 from redis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,22 +16,25 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
 async def get_current_user(
-        token: str = Depends(oauth2_scheme),
+        request: Request,
         db: AsyncSession = Depends(get_db),
         redis: Redis = Depends(get_redis)
 ) -> User:
+    token = request.cookies.get("access_token")
+
+    if not token:
+        raise AppException(401, "UNAUTHORIZED", "You are not logged in.")
+
     is_blacklisted = await redis.get(f"blacklist:{token}")
     if is_blacklisted:
         raise AppException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            error_code="TOKEN_REVOKED",
-            message="Token blacklisted. Please log in again.",
+            status.HTTP_401_UNAUTHORIZED, "TOKEN_REVOKED", "Token blacklisted. Please log in again.",
         )
 
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         username: str = payload.get("sub")
-        if username is None:
+        if username is None or payload.get("refresh"):
             raise AppException(401, "INVALID_TOKEN", "Invalid token data.")
     except jwt.ExpiredSignatureError:
         raise AppException(401, "TOKEN_EXPIRED", "Token is expired.")

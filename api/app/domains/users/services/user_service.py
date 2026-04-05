@@ -22,9 +22,6 @@ async def create_user(db: AsyncSession, user_in: UserCreate) -> User | None:
             message="User with that username already exists."
         )
 
-    print(f"🚨 РЕАЛЬНИЙ ПАРОЛЬ: '{user_in.password}'")
-    print(f"🚨 ДОВЖИНА В БАЙТАХ: {len(user_in.password.encode('utf-8'))}")
-
     user = User(
         username=user_in.username,
         hashed_password=get_password_hash(user_in.password),
