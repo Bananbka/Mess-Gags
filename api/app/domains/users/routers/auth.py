@@ -13,7 +13,8 @@ from app.core.security import create_access_token, verify_password, create_refre
     delete_token_cookies, get_password_hash
 from app.domains.users.dependencies import get_current_user
 from app.domains.users.models.user import User
-from app.domains.users.schemas.user_schemas import UserCreate, UserLogin, UserResponse, PasswordForgot, PasswordReset
+from app.domains.users.schemas.user_schemas import UserCreate, UserLogin, UserResponse, PasswordForgot, PasswordReset, \
+    PasswordChange
 from app.domains.users.services import user_service
 from app.domains.users.services.auth_service import generate_otp, check_otp
 from app.domains.users.services.user_service import get_user_by_email_and_username, get_user_by_username
@@ -142,3 +143,31 @@ async def reset_password(
     await redis.setex(f"force_logout:{user.id}", 604800, int(time.time()))
 
     return SuccessResponse(data={"message": "Password and keys was successfully updated."})
+
+
+@router.post("/change-password", response_model=SuccessResponse[dict])
+async def change_password(
+        user_data: PasswordChange,
+        response: Response,
+        current_user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+        redis: Redis = Depends(get_redis)
+):
+    if not verify_password(user_data.old_password, current_user.hashed_password):
+        raise AppException(401, "INVALID_PASSWORD", "Invalid password.")
+
+    current_user.hashed_password = get_password_hash(user_data.new_password)
+    current_user.encrypted_private_key = user_data.new_encrypted_private_key
+
+    await db.commit()
+
+    logout_time = int(time.time())
+    await redis.setex(f"force_logout:{logout_time}", 604800, logout_time)
+
+    new_access_token = create_access_token(data={"sub": current_user.username})
+    new_refresh_token = create_refresh_token(data={"sub": current_user.username})
+
+    set_token_cookie(response, new_access_token, "access")
+    set_token_cookie(response, new_refresh_token, "refresh")
+
+    return SuccessResponse(data={"message": "Password changed successfully."})

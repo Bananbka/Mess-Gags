@@ -39,3 +39,9 @@ class PasswordReset(BaseModel):
     new_password: str = Field(..., min_length=8, max_length=72)
     new_public_key: str
     new_encrypted_private_key: str
+
+
+class PasswordChange(BaseModel):
+    old_password: str
+    new_password: str = Field(..., min_length=8, max_length=72)
+    new_encrypted_private_key: str
