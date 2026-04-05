@@ -68,3 +68,8 @@ def set_token_cookie(response: Response, token: str, token_type: str) -> None:
             )
         case _:
             raise ValueError("Invalid token type")
+
+
+def delete_token_cookies(response: Response) -> None:
+    response.delete_cookie(key="access_token", httponly=True, samesite="lax")
+    response.delete_cookie(key="refresh_token", httponly=True, samesite="lax")

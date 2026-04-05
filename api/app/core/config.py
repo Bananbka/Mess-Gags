@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
 
+    # EMAIL
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str | None = None
+    SMTP_PASSWORD: str | None = None
+    EMAILS_FROM_NAME: str = "Mess&Gags Security"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

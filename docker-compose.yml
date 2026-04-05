@@ -36,6 +36,11 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   minio:
     image: minio/minio
@@ -71,6 +76,18 @@ services:
       minio:
         condition: service_started
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  celery-worker:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    command: celery -A app.core.celery_app worker --loglevel=info
+    env_file:
+      - ./api/.env
+    depends_on:
+      - redis
+      - postgres
+    restart: always
 
 volumes:
   postgres_data:
