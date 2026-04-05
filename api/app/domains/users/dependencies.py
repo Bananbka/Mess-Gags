@@ -45,4 +45,15 @@ async def get_current_user(
     if user is None:
         raise AppException(404, "USER_NOT_FOUNR", "User is not found.")
 
+    iat = payload.get("iat")
+    if iat:
+        logout_timestamp = await redis.get(f"force_logout:{user.id}")
+
+        if logout_timestamp and iat < int(logout_timestamp):
+            raise AppException(
+                status.HTTP_401_UNAUTHORIZED,
+                "SESSION_EXPIRED",
+                "Your session was terminated. Please log in again.",
+            )
+
     return user

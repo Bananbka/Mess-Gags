@@ -27,6 +27,15 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class PasswordRestore(BaseModel):
+class PasswordForgot(BaseModel):
     username: str
     email: EmailStr
+
+
+class PasswordReset(BaseModel):
+    username: str
+    otp: str = Field(..., min_length=6, max_length=6)
+
+    new_password: str = Field(..., min_length=8, max_length=72)
+    new_public_key: str
+    new_encrypted_private_key: str

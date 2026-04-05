@@ -1,4 +1,5 @@
-﻿from datetime import timedelta, timezone, datetime
+﻿import time
+from datetime import timedelta, timezone, datetime
 
 import jwt
 import bcrypt
@@ -28,7 +29,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=30)
 
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "iat": int(time.time())})
 
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
@@ -41,7 +42,7 @@ def create_refresh_token(data: dict, expires_delta: timedelta | None = None) -> 
     else:
         expire = datetime.now(timezone.utc) + timedelta(days=7)
 
-    to_encode.update({"exp": expire, "refresh": True})
+    to_encode.update({"exp": expire, "refresh": True, "iat": int(time.time())})
 
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 

@@ -10,13 +10,13 @@ from app.core.config import settings
 from app.core.exceptions import AppException
 from app.core.responses import SuccessResponse
 from app.core.security import create_access_token, verify_password, create_refresh_token, set_token_cookie, \
-    delete_token_cookies
+    delete_token_cookies, get_password_hash
 from app.domains.users.dependencies import get_current_user
 from app.domains.users.models.user import User
-from app.domains.users.schemas.user_schemas import UserCreate, UserLogin, UserResponse, PasswordRestore
+from app.domains.users.schemas.user_schemas import UserCreate, UserLogin, UserResponse, PasswordForgot, PasswordReset
 from app.domains.users.services import user_service
-from app.domains.users.services.auth_service import generate_otp
-from app.domains.users.services.user_service import get_user_by_email_and_username
+from app.domains.users.services.auth_service import generate_otp, check_otp
+from app.domains.users.services.user_service import get_user_by_email_and_username, get_user_by_username
 from app.domains.users.tasks import send_reset_password_email
 from app.infrastructure.postgres import get_db
 from app.infrastructure.redis import get_redis
@@ -103,9 +103,9 @@ async def me(current_user: User = Depends(get_current_user)):
 
 
 ### RESTORE
-@router.post("/forgot-password")
+@router.post("/forgot-password", response_model=SuccessResponse[dict])
 async def forgot_password(
-        user_data: PasswordRestore,
+        user_data: PasswordForgot,
         db: AsyncSession = Depends(get_db),
         redis: Redis = Depends(get_redis)
 ):
@@ -117,3 +117,28 @@ async def forgot_password(
 
     send_reset_password_email.delay(user.email, otp)
     return SuccessResponse(data={"message": "Password reset email sent."})
+
+
+@router.post("/reset-password", response_model=SuccessResponse[dict])
+async def reset_password(
+        user_data: PasswordReset,
+        db: AsyncSession = Depends(get_db),
+        redis: Redis = Depends(get_redis)
+):
+    user = await get_user_by_username(db, user_data.username)
+    if not user:
+        raise AppException(404, "UNKNOWN_USER", "There is no user with such credentials.")
+
+    is_valid = await check_otp(redis, user.id, user_data.otp)
+    if not is_valid:
+        raise AppException(404, "INVALID_OTP", "Invalid OTP.")
+
+    user.hashed_password = get_password_hash(user_data.new_password)
+    user.public_key = user_data.new_public_key
+    user.encrypted_private_key = user_data.new_encrypted_private_key
+
+    await db.commit()
+
+    await redis.setex(f"force_logout:{user.id}", 604800, int(time.time()))
+
+    return SuccessResponse(data={"message": "Password and keys was successfully updated."})
