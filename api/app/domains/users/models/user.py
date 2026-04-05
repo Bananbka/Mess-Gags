@@ -17,6 +17,9 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
 
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+
     public_key: Mapped[str] = mapped_column(Text, nullable=False)
     encrypted_private_key: Mapped[str] = mapped_column(Text, nullable=False)
 

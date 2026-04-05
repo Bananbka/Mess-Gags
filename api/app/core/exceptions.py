@@ -37,7 +37,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content=ErrorResponse(
             error_code="VALIDATION_ERROR",
-            message="Помилка валідації вхідних даних",
+            message="Data validation error.",
             details=exc.errors()
         ).model_dump()
     )
@@ -49,6 +49,6 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content=ErrorResponse(
             error_code="INTERNAL_SERVER_ERROR",
-            message="Внутрішня помилка сервера. Ми вже працюємо над цим."
+            message="Internal server error: we already working on it."
         ).model_dump()
     )

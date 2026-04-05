@@ -1,4 +1,6 @@
-﻿from sqlalchemy import select
+﻿from multiprocessing.forkserver import read_signed
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 
@@ -13,6 +15,11 @@ async def get_user_by_username(db: AsyncSession, username: str) -> User | None:
     return result.scalar_one_or_none()
 
 
+async def get_user_by_email_and_username(db: AsyncSession, username: str, email: str) -> User | None:
+    result = await db.execute(select(User).where(User.username == username, User.email == email))
+    return result.scalar_one_or_none()
+
+
 async def create_user(db: AsyncSession, user_in: UserCreate) -> User | None:
     existing_user = await get_user_by_username(db, user_in.username)
     if existing_user:
@@ -24,6 +31,7 @@ async def create_user(db: AsyncSession, user_in: UserCreate) -> User | None:
 
     user = User(
         username=user_in.username,
+        email=user_in.email,
         hashed_password=get_password_hash(user_in.password),
         public_key=user_in.public_key,
         encrypted_private_key=user_in.encrypted_private_key
