@@ -1,6 +1,6 @@
 ﻿import uuid
 
-from sqlalchemy import select, func, Integer
+from sqlalchemy import select, func, Integer, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -88,3 +88,14 @@ async def get_user_chats(
     chats = list(res.scalars().all())
 
     return chats, total_count
+
+
+async def update_chat_updated_at(
+        db: AsyncSession,
+        chat_id: uuid.UUID
+):
+    stmt = (update(Chat).where(Chat.id == chat_id).values(updated_at=func.now()))
+    res = await db.execute(stmt)
+    await db.commit()
+
+    return res.rowcount
