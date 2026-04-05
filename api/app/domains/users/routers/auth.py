@@ -9,17 +9,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.exceptions import AppException
 from app.core.responses import SuccessResponse
-from app.core.security import create_access_token, verify_password, create_refresh_token, set_token_cookie
-from app.domains.users.dependencies import oauth2_scheme, get_current_user
+from app.core.security import create_access_token, verify_password, create_refresh_token, set_token_cookie, \
+    delete_token_cookies
+from app.domains.users.dependencies import get_current_user
 from app.domains.users.models.user import User
-from app.domains.users.schemas.user_schemas import UserCreate, UserLogin, UserResponse
+from app.domains.users.schemas.user_schemas import UserCreate, UserLogin, UserResponse, PasswordRestore
 from app.domains.users.services import user_service
+from app.domains.users.services.auth_service import generate_otp
+from app.domains.users.services.user_service import get_user_by_email_and_username
+from app.domains.users.tasks import send_reset_password_email
 from app.infrastructure.postgres import get_db
 from app.infrastructure.redis import get_redis
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
+### AUTHENTICATION
 @router.post("/register", response_model=SuccessResponse[UserResponse])
 async def register(user_in: UserCreate, response: Response, db: AsyncSession = Depends(get_db)):
     user = await user_service.create_user(db, user_in)
@@ -51,20 +56,24 @@ async def login(user_in: UserLogin, response: Response, db: AsyncSession = Depen
 
 @router.post("/logout", response_model=SuccessResponse[dict])
 async def logout(
-        token: str = Depends(oauth2_scheme),
+        request: Request,
+        response: Response,
         redis: Redis = Depends(get_redis)
 ):
-    try:
-        payload = jwt.decode(token, options={"verify_signature": False})
-        exp = payload.get("exp")
+    token = request.cookies.get("access_token")
+    if token:
+        try:
+            payload = jwt.decode(token, options={"verify_signature": False})
+            exp = payload.get("exp")
 
-        ttl = int(exp - time.time())
-        if ttl > 0:
-            await redis.setex(f"blacklist:{token}", ttl, "revoked")
+            ttl = int(exp - time.time())
+            if ttl > 0:
+                await redis.setex(f"blacklist:{token}", ttl, "revoked")
 
-    except jwt.PyJWTError:
-        pass
+        except jwt.PyJWTError:
+            pass
 
+    delete_token_cookies(response)
     return SuccessResponse(data={"message": "Token deactivated"})
 
 
@@ -87,6 +96,24 @@ async def refresh(request: Request, response: Response):
         raise AppException(401, "INVALID_REFRESH", "Session error.")
 
 
+### PROFILE
 @router.get("/me", response_model=SuccessResponse[UserResponse])
 async def me(current_user: User = Depends(get_current_user)):
     return SuccessResponse(data=current_user)
+
+
+### RESTORE
+@router.post("/forgot-password")
+async def forgot_password(
+        user_data: PasswordRestore,
+        db: AsyncSession = Depends(get_db),
+        redis: Redis = Depends(get_redis)
+):
+    user = await get_user_by_email_and_username(db, user_data.username, user_data.email)
+    if not user:
+        raise AppException(404, "UNKNOWN_USER", "There is no user with such credentials.")
+
+    otp = await generate_otp(redis, user.id)
+
+    send_reset_password_email.delay(user.email, otp)
+    return SuccessResponse(data={"message": "Password reset email sent."})
