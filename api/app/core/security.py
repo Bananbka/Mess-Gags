@@ -2,6 +2,7 @@
 
 import jwt
 import bcrypt
+from fastapi import Response
 
 from app.core.config import settings
 
@@ -43,3 +44,27 @@ def create_refresh_token(data: dict, expires_delta: timedelta | None = None) -> 
     to_encode.update({"exp": expire, "refresh": True})
 
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def set_token_cookie(response: Response, token: str, token_type: str) -> None:
+    match token_type:
+        case "refresh":
+            response.set_cookie(
+                key="refresh_token",
+                value=token,
+                httponly=True,
+                max_age=604800,
+                samesite="lax",
+                secure=False,
+            )
+        case "access":
+            response.set_cookie(
+                key="access_token",
+                value=token,
+                httponly=True,
+                max_age=1800,
+                samesite="lax",
+                secure=False,
+            )
+        case _:
+            raise ValueError("Invalid token type")

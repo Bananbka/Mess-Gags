@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.exceptions import AppException
 from app.core.responses import SuccessResponse
-from app.core.security import create_access_token, verify_password, create_refresh_token
+from app.core.security import create_access_token, verify_password, create_refresh_token, set_token_cookie
 from app.domains.users.dependencies import oauth2_scheme, get_current_user
 from app.domains.users.models.user import User
 from app.domains.users.schemas.user_schemas import UserCreate, UserLogin, UserResponse
@@ -27,23 +27,8 @@ async def register(user_in: UserCreate, response: Response, db: AsyncSession = D
     access_token = create_access_token(data={"sub": user.username})
     refresh_token = create_refresh_token(data={"sub": user.username})
 
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        max_age=1800,
-        samesite="lax",
-        secure=False,
-    )
-
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        max_age=604800,
-        samesite="lax",
-        secure=False,
-    )
+    set_token_cookie(response, access_token, "access")
+    set_token_cookie(response, refresh_token, "refresh")
 
     return SuccessResponse(data=user)
 
@@ -58,23 +43,8 @@ async def login(user_in: UserLogin, response: Response, db: AsyncSession = Depen
     access_token = create_access_token(data={"sub": user.username})
     refresh_token = create_refresh_token(data={"sub": user.username})
 
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        max_age=1800,
-        samesite="lax",
-        secure=False,
-    )
-
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        max_age=604800,
-        samesite="lax",
-        secure=False,
-    )
+    set_token_cookie(response, access_token, "access")
+    set_token_cookie(response, refresh_token, "refresh")
 
     return SuccessResponse(data=user)
 
@@ -110,14 +80,8 @@ async def refresh(request: Request, response: Response):
             raise AppException(401, "INVALID_TOKEN", "Invalid token data.")
 
         new_access = create_access_token(data={"sub": payload.get("username")})
-        response.set_cookie(
-            key="access_token",
-            value=new_access,
-            httponly=True,
-            max_age=1800,
-            samesite="lax",
-            secure=False,
-        )
+        set_token_cookie(response, new_access, "access")
+
         return SuccessResponse(data={"message": "Token has been successfully updated."})
     except:
         raise AppException(401, "INVALID_REFRESH", "Session error.")
