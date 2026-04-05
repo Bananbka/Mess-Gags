@@ -22,7 +22,7 @@ class MessageResponse(BaseModel):
     chat_id: uuid.UUID
     sender_id: uuid.UUID
     encrypted_content: str
-    reply_to_message_id: uuid.UUID | None
+    reply_to_message_id: str | None
     created_at: datetime.datetime
 
     is_read: bool = False

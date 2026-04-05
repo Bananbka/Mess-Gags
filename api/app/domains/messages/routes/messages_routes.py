@@ -14,7 +14,7 @@ from app.domains.users.models import User
 from app.infrastructure.mongo import get_mongo_db
 from app.infrastructure.postgres import get_db
 
-router = APIRouter(prefix="/messages", tags=["messages"])
+router = APIRouter(prefix="/messages", tags=["Messages"])
 
 
 @router.post("/", response_model=SuccessResponse[MessageResponse])

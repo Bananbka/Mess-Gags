@@ -56,5 +56,5 @@ async def get_chat_messages(
         db: AsyncSession = Depends(get_db),
         mongo_db: AsyncIOMotorDatabase = Depends(get_mongo_db),
 ):
-    messages = await messages_service.get_chat_massages(db, mongo_db, user.id, chat_id, limit, offset)
+    messages = await messages_service.get_chat_messages(db, mongo_db, user.id, chat_id, limit, offset)
     return SuccessResponse(data=messages)

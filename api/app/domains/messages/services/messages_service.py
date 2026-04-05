@@ -17,7 +17,7 @@ async def is_user_in_chat(
         db: AsyncSession,
         user_id: uuid.UUID,
         chat_id: uuid.UUID,
-) -> User | None:
+) -> ChatParticipant | None:
     stmt = select(ChatParticipant).where(ChatParticipant.user_id == user_id, ChatParticipant.chat_id == chat_id)
     res = await db.execute(stmt)
     return res.scalar_one_or_none()
@@ -81,7 +81,7 @@ async def send_message(
     return MessageResponse(**message_dict)
 
 
-async def get_chat_massages(
+async def get_chat_messages(
         db: AsyncSession,
         mongo_db: AsyncIOMotorDatabase,
         user_id: uuid.UUID,
