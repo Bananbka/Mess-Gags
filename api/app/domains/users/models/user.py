@@ -1,0 +1,31 @@
+﻿import uuid
+
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Text, Boolean, DateTime, func
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.infrastructure.postgres import Base
+
+
+class User(Base):
+    __tablename__ = 'users'
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+
+    username: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    public_key: Mapped[str] = mapped_column(Text, nullable=False)
+    encrypted_private_key: Mapped[str] = mapped_column(Text, nullable=False)
+
+    bio: Mapped[str | None] = mapped_column(Text, nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+
+    def __repr__(self) -> str:
+        return f'<User {self.username}>'
