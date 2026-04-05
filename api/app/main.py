@@ -4,7 +4,6 @@ from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 from loguru import logger
 
-from app.core.config import settings
 from app.core.logger import setup_logging
 from app.core.exceptions import (
     AppException,
@@ -12,7 +11,7 @@ from app.core.exceptions import (
     validation_exception_handler,
     global_exception_handler
 )
-from app.core.responses import SuccessResponse
+from app.domains.users.routers.auth import router as auth_router
 from app.infrastructure.mongo import connect_to_mongo, close_mongo_connection
 from app.infrastructure.redis import init_redis
 
@@ -51,15 +50,4 @@ async def log_requests(request: Request, call_next):
     return response
 
 
-@app.get("/health", response_model=SuccessResponse[dict])
-async def health_check():
-    return SuccessResponse(data={"status": "ok", "project": "Mess&Gags"})
-
-
-@app.get("/error-test")
-async def error_test():
-    raise AppException(
-        status_code=400,
-        error_code="TEST_ERROR",
-        message="Це тестова помилка, щоб перевірити формат"
-    )
+app.include_router(auth_router)
