@@ -60,3 +60,31 @@ async def get_or_create_private_chat(
 
     await db.refresh(new_chat, ['participants'])
     return new_chat
+
+
+async def get_user_chats(
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        limit: int = 20,
+        offset: int = 0
+) -> tuple[list[Chat], int]:
+    count_stmt = (
+        select(func.count())
+        .select_from(ChatParticipant)
+        .where(ChatParticipant.user_id == user_id)
+    )
+    total_count = await db.scalar(count_stmt)
+
+    stmt = (
+        select(Chat)
+        .join(ChatParticipant, Chat.id == ChatParticipant.chat_id)
+        .where(ChatParticipant.user_id == user_id)
+        .options(selectinload(Chat.participants))
+        .order_by(Chat.updated_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    res = await db.execute(stmt)
+    chats = list(res.scalars().all())
+
+    return chats, total_count
