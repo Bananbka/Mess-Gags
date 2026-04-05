@@ -12,7 +12,7 @@ from app.core.exceptions import (
     global_exception_handler
 )
 from app.domains.chats.routers.chat_routes import router as chats_router
-from app.domains.messages.routes.messages_router import router as messages_router
+from app.domains.messages.routes.messages_routes import router as messages_router
 from app.domains.users.routers.auth import router as auth_router
 from app.infrastructure.mongo import connect_to_mongo, close_mongo_connection
 from app.infrastructure.redis import init_redis
