@@ -2,7 +2,7 @@
 
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import String, Text, Boolean, DateTime, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.infrastructure.postgres import Base
 
@@ -29,6 +29,9 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+
+    chats = relationship("ChatParticipant", back_populates="user")
+    folders = relationship("ChatFolder", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f'<User {self.username}>'

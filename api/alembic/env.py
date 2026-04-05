@@ -11,7 +11,8 @@ from app.core.config import settings
 from app.infrastructure.postgres import Base
 
 # MODELS
-from app.domains.users.models.user import User
+from app.domains.users.models import *
+from app.domains.chats.models import *
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
