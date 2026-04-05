@@ -28,3 +28,4 @@ class ChatParticipant(Base):
     joined_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     chat = relationship("Chat", back_populates="participants")
+    user = relationship("User", back_populates="chats")
