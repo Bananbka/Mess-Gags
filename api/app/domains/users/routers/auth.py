@@ -18,7 +18,7 @@ from app.domains.users.schemas.user_schemas import UserCreate, UserLogin, UserRe
 from app.domains.users.services import user_service
 from app.domains.users.services.auth_service import generate_otp, check_otp
 from app.domains.users.services.user_service import get_user_by_email_and_username, get_user_by_username
-from app.domains.users.tasks import send_reset_password_email
+from app.domains.users.tasks import send_email, EmailTasks
 from app.infrastructure.postgres import get_db
 from app.infrastructure.redis import get_redis
 
@@ -27,7 +27,11 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 ### AUTHENTICATION
 @router.post("/register", response_model=SuccessResponse[UserResponse])
-async def register(user_in: UserCreate, response: Response, db: AsyncSession = Depends(get_db)):
+async def register(user_in: UserCreate, response: Response, db: AsyncSession = Depends(get_db),
+                   redis: Redis = Depends(get_redis)):
+    otp = await generate_otp(redis, "email-verification", user_in.email)
+    send_email.delay(EmailTasks.EMAIL_VERIFICATION.value, user_in.email, otp=otp)
+
     user = await user_service.create_user(db, user_in)
 
     access_token = create_access_token(data={"sub": user.username})
@@ -114,9 +118,9 @@ async def forgot_password(
     if not user:
         raise AppException(404, "UNKNOWN_USER", "There is no user with such credentials.")
 
-    otp = await generate_otp(redis, user.id)
+    otp = await generate_otp(redis, "password_reset", user.id)
 
-    send_reset_password_email.delay(user.email, otp)
+    send_email.delay(EmailTasks.PASSWORD_RESET.value, user.email, otp=otp)
     return SuccessResponse(data={"message": "Password reset email sent."})
 
 
@@ -130,7 +134,7 @@ async def reset_password(
     if not user:
         raise AppException(404, "UNKNOWN_USER", "There is no user with such credentials.")
 
-    is_valid = await check_otp(redis, user.id, user_data.otp)
+    is_valid = await check_otp(redis, "password_reset", user.id, user_data.otp)
     if not is_valid:
         raise AppException(404, "INVALID_OTP", "Invalid OTP.")
 
