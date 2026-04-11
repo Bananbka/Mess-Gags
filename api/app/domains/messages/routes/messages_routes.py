@@ -1,29 +1,41 @@
 ﻿from fastapi import APIRouter, Depends
 from fastapi import Path
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from redis.asyncio import Redis
 
 from app.core.responses import SuccessResponse
+from app.domains.chats.models import ChatParticipant
 from app.domains.messages.schemas.messages_schemas import MessageResponse, MessageCreateRequest, MessageUpdateRequest
 from app.domains.messages.services import messages_service
-from app.domains.messages.services.messages_service import send_message
 from app.domains.users.dependencies import get_current_user
 from app.domains.users.models import User
 from app.infrastructure.mongo import get_mongo_db
 from app.infrastructure.postgres import get_db
+from app.infrastructure.redis import get_redis
 
 router = APIRouter(prefix="/messages", tags=["Messages"])
 
 
+# MESSAGES CRUD
 @router.post("/", response_model=SuccessResponse[MessageResponse])
 async def create_message(
-        message_in: MessageCreateRequest,
-        user: User = Depends(get_current_user),
-        db: AsyncSession = Depends(get_db),
+        message_in: MessageCreateRequest, user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db), redis: Redis = Depends(get_redis),
         mongo_db: AsyncIOMotorDatabase = Depends(get_mongo_db)
-
 ):
-    new_message = await send_message(db, mongo_db, user.id, message_in)
+    new_message = await messages_service.send_message(db, mongo_db, user.id, message_in)
+
+    stmt = select(ChatParticipant.user_id).where(ChatParticipant.chat_id == new_message.chat_id)
+    result = await db.execute(stmt)
+    participant_ids = result.scalars().all()
+
+    message_json = new_message.model_dump_json(by_alias=True)
+
+    for user_id in participant_ids:
+        await redis.publish(f"user:{user_id}", message_json)
+
     return SuccessResponse(data=new_message)
 
 

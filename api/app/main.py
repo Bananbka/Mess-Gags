@@ -13,6 +13,7 @@ from app.core.exceptions import (
 )
 from app.domains.chats.routers.chat_routes import router as chats_router
 from app.domains.messages.routes.messages_routes import router as messages_router
+from app.domains.messages.routes.ws_router import ws_router
 from app.domains.users.routers.auth import router as auth_router
 from app.infrastructure.mongo import connect_to_mongo, close_mongo_connection
 from app.infrastructure.redis import init_redis
@@ -55,3 +56,4 @@ async def log_requests(request: Request, call_next):
 app.include_router(auth_router)
 app.include_router(chats_router)
 app.include_router(messages_router)
+app.include_router(ws_router)

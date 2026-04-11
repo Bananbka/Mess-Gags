@@ -1,9 +1,10 @@
 ﻿import jwt
-from fastapi import Depends, Request
+from fastapi import Depends, Request, WebSocketException
 from fastapi.security import OAuth2PasswordBearer
 from redis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
+from starlette.websockets import WebSocket
 
 from app.core.config import settings
 from app.core.exceptions import AppException
@@ -65,3 +66,35 @@ async def get_current_user(
     if not current_unverified_user.is_verified:
         raise AppException(403, "NOT_VERIFIED", "You are not verified.")
     return current_unverified_user
+
+
+async def get_ws_current_user(
+        websocket: WebSocket,
+        db: AsyncSession = Depends(get_db),
+        redis: Redis = Depends(get_redis)
+) -> User:
+    token = websocket.cookies.get("access_token")
+
+    if not token:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+
+    is_blacklisted = await redis.get(f"blacklist:{token}")
+    if is_blacklisted:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None or payload.get("refresh"):
+            raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+    except jwt.PyJWTError:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+
+    user = await get_user_by_username(db, username)
+    if user is None:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+
+    if not user.is_verified:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+
+    return user
