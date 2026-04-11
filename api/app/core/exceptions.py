@@ -1,6 +1,7 @@
 ﻿from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from fastapi.encoders import jsonable_encoder
 from app.core.responses import ErrorResponse
 from loguru import logger
 
@@ -38,7 +39,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content=ErrorResponse(
             error_code="VALIDATION_ERROR",
             message="Data validation error.",
-            details=exc.errors()
+            details=jsonable_encoder(exc.errors())
         ).model_dump()
     )
 

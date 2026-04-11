@@ -1,5 +1,7 @@
 ﻿import uuid
-from pydantic import BaseModel, Field, ConfigDict, EmailStr
+
+import phonenumbers
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_validator
 
 
 class UserCreate(BaseModel):
@@ -9,6 +11,20 @@ class UserCreate(BaseModel):
     phone_number: str
     public_key: str
     encrypted_private_key: str
+
+    @field_validator('phone_number')
+    @classmethod
+    def validate_phone(cls, v: str):
+        try:
+            parsed_number = phonenumbers.parse(v)
+
+            if not phonenumbers.is_valid_number(parsed_number):
+                raise ValueError('Invalid phone number for this country.')
+
+            return phonenumbers.format_number(parsed_number, phonenumbers.PhoneNumberFormat.E164)
+
+        except phonenumbers.NumberParseException:
+            raise ValueError('Invalid phone number format.')
 
 
 class UserLogin(BaseModel):
