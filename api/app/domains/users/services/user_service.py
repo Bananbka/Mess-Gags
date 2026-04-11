@@ -26,6 +26,11 @@ async def get_user_by_email_and_username(db: AsyncSession, username: str, email:
     return result.scalar_one_or_none()
 
 
+async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
+    result = await db.execute(select(User).where(User.email == email))
+    return result.scalar_one_or_none()
+
+
 async def create_user(db: AsyncSession, user_in: UserCreate) -> User | None:
     existing_user = await get_user_by_username(db, user_in.username)
     if existing_user:

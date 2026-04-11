@@ -15,7 +15,7 @@ from app.infrastructure.redis import get_redis
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
-async def get_current_user(
+async def get_current_unverified_user(
         request: Request,
         db: AsyncSession = Depends(get_db),
         redis: Redis = Depends(get_redis)
@@ -57,3 +57,11 @@ async def get_current_user(
             )
 
     return user
+
+
+async def get_current_user(
+        current_unverified_user: User = Depends(get_current_unverified_user),
+) -> User:
+    if not current_unverified_user.is_verified:
+        raise AppException(403, "NOT_VERIFIED", "You are not verified.")
+    return current_unverified_user

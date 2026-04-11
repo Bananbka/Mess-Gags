@@ -11,13 +11,14 @@ from app.core.exceptions import AppException
 from app.core.responses import SuccessResponse
 from app.core.security import create_access_token, verify_password, create_refresh_token, set_token_cookie, \
     delete_token_cookies, get_password_hash
-from app.domains.users.dependencies import get_current_user
+from app.domains.users.dependencies import get_current_user, get_current_unverified_user
 from app.domains.users.models.user import User
 from app.domains.users.schemas.user_schemas import UserCreate, UserLogin, UserResponse, PasswordForgot, PasswordReset, \
-    PasswordChange
+    PasswordChange, EmailVerification
 from app.domains.users.services import user_service
 from app.domains.users.services.auth_service import generate_otp, check_otp
-from app.domains.users.services.user_service import get_user_by_email_and_username, get_user_by_username
+from app.domains.users.services.user_service import get_user_by_email_and_username, get_user_by_username, \
+    get_user_by_email
 from app.domains.users.tasks import send_email, EmailTasks
 from app.infrastructure.postgres import get_db
 from app.infrastructure.redis import get_redis
@@ -27,12 +28,16 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 ### AUTHENTICATION
 @router.post("/register", response_model=SuccessResponse[UserResponse])
-async def register(user_in: UserCreate, response: Response, db: AsyncSession = Depends(get_db),
-                   redis: Redis = Depends(get_redis)):
-    otp = await generate_otp(redis, "email-verification", user_in.email)
-    send_email.delay(EmailTasks.EMAIL_VERIFICATION.value, user_in.email, otp=otp)
+async def register(user_in: UserCreate, response: Response,
+                   db: AsyncSession = Depends(get_db), redis: Redis = Depends(get_redis)):
+    existing_user = await get_user_by_email(db, email=user_in.email)
+    if existing_user:
+        raise AppException(409, "INVALID_EMAIL", "Email already exists.")
 
     user = await user_service.create_user(db, user_in)
+
+    otp = await generate_otp(redis, "email-verification", user_in.email)
+    send_email.delay(EmailTasks.EMAIL_VERIFICATION.value, user_in.email, otp=otp)
 
     access_token = create_access_token(data={"sub": user.username})
     refresh_token = create_refresh_token(data={"sub": user.username})
@@ -40,7 +45,35 @@ async def register(user_in: UserCreate, response: Response, db: AsyncSession = D
     set_token_cookie(response, access_token, "access")
     set_token_cookie(response, refresh_token, "refresh")
 
+    return SuccessResponse(data=user, meta={"message": "Email was sent"})
+
+
+@router.post("/verify-email", response_model=SuccessResponse[UserResponse])
+async def verify_email(data: EmailVerification,
+                       db: AsyncSession = Depends(get_db), redis: Redis = Depends(get_redis)):
+    is_valid = await check_otp(redis, "email-verification", data.email, data.otp)
+    if not is_valid:
+        raise AppException(404, "INVALID_OTP", "Invalid OTP.")
+
+    user = await get_user_by_email(db, email=data.email)
+    if not user: raise AppException(404, "USER_DOESNT_EXIST", "User does not exist.")
+
+    user.is_verified = True
+    await db.commit()
+
     return SuccessResponse(data=user)
+
+
+@router.post("/get-verification-email", response_model=SuccessResponse[dict])
+async def get_verification_email(user: User = Depends(get_current_unverified_user),
+                                 redis: Redis = Depends(get_redis)):
+    if user.is_verified:
+        raise AppException(400, "ALREADY_VERIFIED", "User is already verified.")
+
+    otp = await generate_otp(redis, "email-verification", user.email)
+    send_email.delay(EmailTasks.EMAIL_VERIFICATION.value, user.email, otp=otp)
+
+    return SuccessResponse(data={"message": "Mail was successfully sent."})
 
 
 @router.post("/login", response_model=SuccessResponse[UserResponse])
