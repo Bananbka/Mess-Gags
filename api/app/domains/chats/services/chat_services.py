@@ -99,3 +99,10 @@ async def update_chat_updated_at(
     await db.commit()
 
     return res.rowcount
+
+
+async def get_chat_participants_ids(db: AsyncSession, chat_id: uuid.UUID):
+    stmt = select(ChatParticipant.user_id).where(ChatParticipant.chat_id == chat_id)
+    res = await db.execute(stmt)
+
+    return res.scalars().all()

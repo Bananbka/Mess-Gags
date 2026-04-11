@@ -1,9 +1,17 @@
 ﻿import asyncio
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from redis.asyncio import Redis
+import uuid
 
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from pydantic import ValidationError
+from redis.asyncio import Redis
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.domains.chats.models import ChatParticipant
+from app.domains.messages.schemas.ws_schemas import WSMessageEnvelope, WSEventType
 from app.domains.users.dependencies import get_ws_current_user
 from app.domains.users.models import User
+from app.infrastructure.postgres import get_db
 from app.infrastructure.redis import get_redis
 
 ws_router = APIRouter()
@@ -25,8 +33,10 @@ async def listen_to_redis(pubsub, websocket: WebSocket):
 @ws_router.websocket('/ws')
 async def websocket_endpoint(websocket: WebSocket,
                              user: User = Depends(get_ws_current_user),
-                             redis: Redis = Depends(get_redis)):
+                             db: AsyncSession = Depends(get_db), redis: Redis = Depends(get_redis)):
     await websocket.accept()
+
+    await redis.set(f"status:{user.id}", "1", ex=86400)
 
     pubsub = redis.pubsub()
     channel_name = f"user:{user.id}"
@@ -36,7 +46,50 @@ async def websocket_endpoint(websocket: WebSocket,
 
     try:
         while True:
-            data = await websocket.receive_text()
+            raw = await websocket.receive_json()
+
+            try:
+                ws_event = WSMessageEnvelope.model_validate(raw)
+                ws_event.user_id = user.id
+
+                if ws_event.event_type in (
+                        WSEventType.TYPING_START,
+                        WSEventType.TYPING_STOP,
+                        WSEventType.MESSAGE_READ
+                ):
+                    if not ws_event.chat_id:
+                        continue
+
+                    stmt = select(ChatParticipant.user_id).where(ChatParticipant.chat_id == ws_event.chat_id)
+                    res = await db.execute(stmt)
+                    participant_ids = res.scalars().all()
+
+                    event_json = ws_event.model_dump_json()
+
+                    for p_id in participant_ids:
+                        if p_id != user.id:
+                            await redis.publish(f"user:{p_id}", event_json)
+
+                elif ws_event.event_type in (
+                        WSEventType.NEW_MESSAGE,
+                        WSEventType.MESSAGE_EDITED,
+                        WSEventType.MESSAGE_DELETED
+                ):
+                    error_envelope = WSMessageEnvelope(
+                        event_type=WSEventType.ERROR,
+                        payload={"message": f"Please use HTTP endpoints for {ws_event.event_type.value}"}
+                    )
+                    await websocket.send_text(error_envelope.model_dump_json())
+
+
+
+            except ValidationError as e:
+                error_envelope = WSMessageEnvelope(
+                    event_type=WSEventType.ERROR,
+                    payload={"details": e.errors()},
+                )
+                await websocket.send_text(error_envelope.model_dump_json())
+
     except WebSocketDisconnect:
         pass
 
@@ -44,3 +97,5 @@ async def websocket_endpoint(websocket: WebSocket,
         redis_task.cancel()
         await pubsub.unsubscribe(channel_name)
         await pubsub.close()
+
+        await redis.set(f"status:{user.id}", "0")

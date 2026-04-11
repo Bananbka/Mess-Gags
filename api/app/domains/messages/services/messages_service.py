@@ -137,9 +137,8 @@ async def delete_message(
         mongo_db: AsyncIOMotorDatabase,
         user_id: uuid.UUID,
         msg_id: str,
-) -> bool:
+) -> uuid.UUID:
     collection = mongo_db["messages"]
     msg = await get_and_validate_message(db, collection, msg_id, user_id)
-
-    res = await collection.delete_one({"_id": msg["_id"]})
-    return res.deleted_count > 0
+    await collection.delete_one({"_id": msg["_id"]})
+    return msg["chat_id"]
