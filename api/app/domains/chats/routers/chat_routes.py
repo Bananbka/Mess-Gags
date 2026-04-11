@@ -3,7 +3,6 @@
 from fastapi import APIRouter, Depends, Path, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
-from uvicorn.lifespan import off
 
 from app.core.responses import SuccessResponse
 from app.domains.chats.schemas.chat_schemas import ChatResponse, PrivateChatCreateRequest

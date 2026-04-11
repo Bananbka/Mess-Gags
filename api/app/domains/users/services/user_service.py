@@ -35,13 +35,12 @@ async def create_user(db: AsyncSession, user_in: UserCreate) -> User | None:
             message="User with that username already exists."
         )
 
-    user = User(
-        username=user_in.username,
-        email=user_in.email,
-        hashed_password=get_password_hash(user_in.password),
-        public_key=user_in.public_key,
-        encrypted_private_key=user_in.encrypted_private_key
-    )
+    user_dict = {
+        **user_in.model_dump(exclude={"password"}),
+        "hashed_password": get_password_hash(user_in.password)
+    }
+
+    user = User(**user_dict)
 
     db.add(user)
     await db.commit()

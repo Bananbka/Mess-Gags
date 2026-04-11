@@ -15,6 +15,7 @@ class User(Base):
     )
 
     username: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
+    phone_number = mapped_column(String(20), unique=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
 
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)

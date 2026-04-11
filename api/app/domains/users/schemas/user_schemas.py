@@ -6,6 +6,7 @@ class UserCreate(BaseModel):
     username: str = Field(..., min_length=6, max_length=50)
     password: str = Field(..., min_length=8, max_length=72)
     email: EmailStr
+    phone_number: str
     public_key: str
     encrypted_private_key: str
 
@@ -19,6 +20,7 @@ class UserResponse(BaseModel):
     id: uuid.UUID
     username: str
     email: EmailStr
+    phone_number: str
     public_key: str
     bio: str | None = None
     avatar: str | None = None

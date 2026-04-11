@@ -1,6 +1,4 @@
-﻿import uuid
-
-from fastapi import APIRouter, Depends
+﻿from fastapi import APIRouter, Depends
 from fastapi import Path
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from sqlalchemy.ext.asyncio import AsyncSession

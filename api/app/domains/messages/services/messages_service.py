@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import AppException
 from app.domains.chats.models import ChatParticipant
 from app.domains.messages.schemas.messages_schemas import MessageCreateRequest, MessageDocument, MessageResponse
-from app.domains.users.models import User
 
 
 async def is_user_in_chat(
