@@ -150,3 +150,26 @@ async def delete_message(
 
     await collection.delete_one({"_id": msg["_id"]})
     return msg["chat_id"]
+
+
+async def mark_messages_as_read(
+        mongo_db: AsyncIOMotorDatabase,
+        chat_id: uuid.UUID,
+        user_id: uuid.UUID,
+        last_read_message_id: str
+) -> int:
+    collection = mongo_db["messages"]
+
+    message_id = objectify_id(last_read_message_id)
+
+    result = await collection.update_many(
+        {
+            "chat_id": chat_id,
+            "sender_id": {"$ne": user_id},
+            "is_read": False,
+            "_id": {"$lte": message_id}
+        },
+        {"$set": {"is_read": True}}
+    )
+
+    return result.modified_count

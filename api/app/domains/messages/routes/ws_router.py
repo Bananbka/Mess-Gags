@@ -1,7 +1,7 @@
 ﻿import asyncio
-import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import ValidationError
 from redis.asyncio import Redis
 from sqlalchemy import select
@@ -9,8 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.chats.models import ChatParticipant
 from app.domains.messages.schemas.ws_schemas import WSMessageEnvelope, WSEventType
+from app.domains.messages.services import messages_service
 from app.domains.users.dependencies import get_ws_current_user
 from app.domains.users.models import User
+from app.infrastructure.mongo import get_mongo_db
 from app.infrastructure.postgres import get_db
 from app.infrastructure.redis import get_redis
 
@@ -33,7 +35,8 @@ async def listen_to_redis(pubsub, websocket: WebSocket):
 @ws_router.websocket('/ws')
 async def websocket_endpoint(websocket: WebSocket,
                              user: User = Depends(get_ws_current_user),
-                             db: AsyncSession = Depends(get_db), redis: Redis = Depends(get_redis)):
+                             db: AsyncSession = Depends(get_db), redis: Redis = Depends(get_redis),
+                             mongo_db: AsyncIOMotorDatabase = Depends(get_mongo_db)):
     await websocket.accept()
 
     await redis.set(f"status:{user.id}", "1", ex=86400)
@@ -54,8 +57,7 @@ async def websocket_endpoint(websocket: WebSocket,
 
                 if ws_event.event_type in (
                         WSEventType.TYPING_START,
-                        WSEventType.TYPING_STOP,
-                        WSEventType.MESSAGE_READ
+                        WSEventType.TYPING_STOP
                 ):
                     if not ws_event.chat_id:
                         continue
@@ -69,6 +71,27 @@ async def websocket_endpoint(websocket: WebSocket,
                     for p_id in participant_ids:
                         if p_id != user.id:
                             await redis.publish(f"user:{p_id}", event_json)
+
+                elif ws_event.event_type == WSEventType.MESSAGE_READ:
+                    last_read_id = ws_event.payload.get("last_read_message_id")
+
+                    if not ws_event.chat_id or not last_read_id:
+                        continue
+
+                    updated_count = await messages_service.mark_messages_as_read(
+                        mongo_db, ws_event.chat_id, user.id, last_read_id
+                    )
+
+                    if updated_count > 0:
+                        stmt = select(ChatParticipant.user_id).where(ChatParticipant.chat_id == ws_event.chat_id)
+                        res = await db.execute(stmt)
+                        participant_ids = res.scalars().all()
+
+                        event_json = ws_event.model_dump_json()
+
+                        for p_id in participant_ids:
+                            await redis.publish(f"user:{p_id}", event_json)
+
 
                 elif ws_event.event_type in (
                         WSEventType.NEW_MESSAGE,
