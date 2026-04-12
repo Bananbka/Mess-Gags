@@ -10,6 +10,8 @@ class MessageDocument(BaseModel):
     encrypted_content: str
     reply_to_message_id: str | None = None
 
+    attachments: list[dict] | None = None
+
     is_read: bool = False
     is_pinned: bool = False
     is_edited: bool = False
@@ -25,6 +27,8 @@ class MessageResponse(BaseModel):
     reply_to_message_id: str | None
     created_at: datetime.datetime
 
+    attachments: list[dict] | None = None
+
     is_read: bool = False
     is_pinned: bool = False
     is_edited: bool = False
@@ -36,6 +40,8 @@ class MessageCreateRequest(BaseModel):
     chat_id: uuid.UUID
     encrypted_content: str
     reply_to_message_id: str | None = None
+
+    attachments: list[dict] | None = None
 
 
 class MessageUpdateRequest(BaseModel):

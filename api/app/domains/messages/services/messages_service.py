@@ -62,13 +62,12 @@ async def send_message(
     if not prt:
         raise AppException(403, "FORBIDDEN", "You are not participant of this chat.")
 
-    new_message = MessageDocument(
-        chat_id=message_in.chat_id,
-        sender_id=user_id,
-        encrypted_content=message_in.encrypted_content,
-        reply_to_message_id=message_in.reply_to_message_id,
-        created_at=datetime.now(timezone.utc)
-    )
+    message_dict = {
+        "created_at": datetime.now(timezone.utc),
+        "sender_id": user_id,
+        **message_in.model_dump(),
+    }
+    new_message = MessageDocument(**message_dict)
 
     message_dict = new_message.model_dump()
 

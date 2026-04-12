@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     MINIO_URL: str
     MINIO_USER: str
     MINIO_PASSWORD: str
-    MINIO_BUCKET_NAME: str = "messenger-media"
+    MINIO_BUCKET_NAME: str = "chat-attachments"
 
     # JWT
     SECRET_KEY: str

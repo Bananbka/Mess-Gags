@@ -12,9 +12,11 @@ from app.core.exceptions import (
     global_exception_handler
 )
 from app.domains.chats.routers.chat_routes import router as chats_router
+from app.domains.files.routers.file_routes import router as file_router
 from app.domains.messages.routes.messages_routes import router as messages_router
 from app.domains.messages.routes.ws_router import ws_router
 from app.domains.users.routers.auth import router as auth_router
+from app.infrastructure.minio import minio_manager
 from app.infrastructure.mongo import connect_to_mongo, close_mongo_connection
 from app.infrastructure.redis import init_redis
 
@@ -26,6 +28,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Mess&Gags API...")
     await connect_to_mongo()
     await init_redis()
+    await minio_manager.ensure_bucket_exists()
     yield
     logger.info("Stopping Mess&Gags API...")
     await close_mongo_connection()
@@ -57,3 +60,4 @@ app.include_router(auth_router)
 app.include_router(chats_router)
 app.include_router(messages_router)
 app.include_router(ws_router)
+app.include_router(file_router)
