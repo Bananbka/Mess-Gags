@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.chats.models import ChatParticipant
+from app.domains.chats.services.chat_services import update_participant_last_read
 from app.domains.messages.schemas.ws_schemas import WSMessageEnvelope, WSEventType
 from app.domains.messages.services import messages_service
 from app.domains.users.dependencies import get_ws_current_user
@@ -77,6 +78,8 @@ async def websocket_endpoint(websocket: WebSocket,
 
                     if not ws_event.chat_id or not last_read_id:
                         continue
+
+                    await update_participant_last_read(db, ws_event.chat_id, user.id, last_read_id)
 
                     updated_count = await messages_service.mark_messages_as_read(
                         mongo_db, ws_event.chat_id, user.id, last_read_id

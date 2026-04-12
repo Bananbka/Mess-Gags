@@ -50,10 +50,10 @@ async def get_chats(
 async def get_chat_messages(
         chat_id: uuid.UUID = Path(..., description="Chat ID"),
         limit: int = Query(50, ge=1, le=100),
-        offset: int = Query(0, ge=0),
+        before_id: str | None = Query(None, description="_id of the oldest loaded message."),
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
         mongo_db: AsyncIOMotorDatabase = Depends(get_mongo_db),
 ):
-    messages = await messages_service.get_chat_messages(db, mongo_db, user.id, chat_id, limit, offset)
+    messages = await messages_service.get_chat_messages(db, mongo_db, user.id, chat_id, limit, before_id)
     return SuccessResponse(data=messages)

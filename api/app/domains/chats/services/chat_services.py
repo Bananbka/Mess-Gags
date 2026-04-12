@@ -1,11 +1,13 @@
 ﻿import uuid
 
+from motor.motor_asyncio import AsyncIOMotorDatabase
 from sqlalchemy import select, func, Integer, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import AppException
 from app.domains.chats.models import Chat, ChatParticipant, ChatType, ParticipantRole
+from app.domains.messages.services.messages_service import objectify_id
 from app.domains.users.services.user_service import get_user_by_id
 
 
@@ -106,3 +108,61 @@ async def get_chat_participants_ids(db: AsyncSession, chat_id: uuid.UUID):
     res = await db.execute(stmt)
 
     return res.scalars().all()
+
+
+async def update_participant_last_read(
+        db: AsyncSession,
+        chat_id: uuid.UUID,
+        user_id: uuid.UUID,
+        last_read_message_id: str
+):
+    stmt = (
+        update(ChatParticipant)
+        .where(
+            ChatParticipant.chat_id == chat_id,
+            ChatParticipant.user_id == user_id,
+        )
+        .values(last_read_message_id=last_read_message_id)
+    )
+
+    await db.execute(stmt)
+    await db.commit()
+
+
+async def get_chat_participants_by_user(db: AsyncSession, user_id: uuid.UUID):
+    stmt = (
+        select(ChatParticipant)
+        .where(ChatParticipant.user_id == user_id)
+    )
+    res = await db.execute(stmt)
+    return res.scalars().all()
+
+
+async def get_user_chats_with_unread(db: AsyncSession, mongo_db: AsyncIOMotorDatabase, user_id: uuid.UUID):
+    participants = await get_chat_participants_by_user(db, user_id)
+
+    collection = mongo_db["messages"]
+    result_chats = []
+
+    # TODO: Aggregate without N+1 (count + find)
+    for p in participants:
+        query = {
+            "chat_id": p.chat_id,
+            "sender_id": {"$ne": p.user_id}
+        }
+
+        if p.last_read_message_id:
+            query["_id"] = {"$gt": objectify_id(p.last_read_message_id)}
+
+        unread_count = await collection.count_documents(query)
+
+        last_msg_cursor = collection.find({"chat_id": p.chat_id}).sort("_id", -1).limit(1)
+        last_msg = await last_msg_cursor.to_list(length=1)
+
+        result_chats.append({
+            "chat_id": p.chat_id,
+            "unread_count": unread_count,
+            "last_message": last_msg[0] if last_msg else None
+        })
+
+    return result_chats

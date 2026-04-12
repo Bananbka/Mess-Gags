@@ -87,18 +87,23 @@ async def get_chat_messages(
         user_id: uuid.UUID,
         chat_id: uuid.UUID,
         limit: int = 50,
-        offset: int = 0
+        before_id: str | None = None
 ) -> list[MessageResponse]:
     prt = await is_user_in_chat(db, user_id, chat_id)
     if not prt:
         raise AppException(403, "FORBIDDEN", "You are not participant of this chat.")
 
     collection = mongo_db["messages"]
+    query = {"chat_id": chat_id}
+
+    if before_id:
+        message_id = objectify_id(before_id)
+        query["_id"] = {"$lt": message_id}
+
     crs = (
         collection
-        .find({"chat_id": chat_id})
-        .sort("created_at", -1)
-        .skip(offset)
+        .find(query)
+        .sort("_id", -1)
         .limit(limit)
     )
     messages = await crs.to_list(length=limit)
