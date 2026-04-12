@@ -1,4 +1,5 @@
-﻿import uuid
+﻿import asyncio
+import uuid
 from datetime import datetime, timezone
 
 from bson import ObjectId
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import AppException
 from app.domains.chats.models import ChatParticipant
 from app.domains.messages.schemas.messages_schemas import MessageCreateRequest, MessageDocument, MessageResponse
+from app.infrastructure.minio import minio_manager
 
 
 async def is_user_in_chat(
@@ -139,5 +141,12 @@ async def delete_message(
 ) -> uuid.UUID:
     collection = mongo_db["messages"]
     msg = await get_and_validate_message(db, collection, msg_id, user_id)
+
+    attachments = msg.get("attachments", [])
+    for attachment in attachments:
+        file_url = attachment.get("url")
+        if file_url:
+            asyncio.create_task(minio_manager.delete_file(file_url))
+
     await collection.delete_one({"_id": msg["_id"]})
     return msg["chat_id"]

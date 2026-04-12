@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str | None = None
     EMAILS_FROM_NAME: str = "Mess&Gags Security"
 
+    TIMEZONE: str = "Europe/Kyiv"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

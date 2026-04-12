@@ -63,6 +63,15 @@ class MinioClient:
 
             file_url = f"{self.endpoint_url}/{self.bucket_name}/{unique_filename}"
             return file_url
-            
+
+    async def delete_file(self, file_url: str) -> str:
+        try:
+            filename = file_url.split("/")[-1]
+
+            async with self.get_client() as client:
+                await client.delete_object(Bucket=self.bucket_name, Key=filename)
+        except Exception as e:
+            print("ERROR WHILE DELETING FILE: ", e)
+
 
 minio_manager = MinioClient()
