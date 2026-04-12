@@ -89,6 +89,17 @@ services:
       - postgres
     restart: always
 
+  celery-beat:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    command: celery -A app.core.celery_app beat --loglevel=info
+    env_file:
+      - ./api/.env
+    depends_on:
+      - redis
+    restart: always
+
 volumes:
   postgres_data:
   mongo_data:
