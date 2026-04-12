@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.responses import SuccessResponse
 from app.domains.chats.schemas.chat_schemas import ChatResponse, PrivateChatCreateRequest
+from app.domains.chats.services import chat_services
 from app.domains.chats.services.chat_services import get_or_create_private_chat, get_user_chats
 from app.domains.messages.schemas.messages_schemas import MessageResponse
 from app.domains.messages.services import messages_service
@@ -27,14 +28,25 @@ async def private_chat(
     return SuccessResponse(data=chat)
 
 
-@router.post('/', response_model=SuccessResponse[list[ChatResponse]])
+@router.get('/', response_model=SuccessResponse[list[ChatResponse]])
 async def get_chats(
-        limit: int = 20,
-        offset: int = 0,
+        limit: int = Query(20, ge=1, le=100),
+        offset: int = Query(0, ge=0),
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
+        mongo_db: AsyncIOMotorDatabase = Depends(get_mongo_db),
 ):
-    chats, total_count = await get_user_chats(db, user.id, limit, offset)
+    chats_from_pg, total_count = await get_user_chats(db, user.id, limit, offset)
+
+    if not chats_from_pg:
+        return SuccessResponse(
+            data=[],
+            meta={"total": total_count, "limit": limit, "offset": offset, "has_more": False}
+        )
+
+    enriched_chats = await chat_services.enrich_chats_with_mongo_data(
+        mongo_db, user.id, chats_from_pg
+    )
 
     meta = {
         "total": total_count,
@@ -43,7 +55,7 @@ async def get_chats(
         "has_more": (offset + limit) < total_count
     }
 
-    return SuccessResponse(data=chats, meta=meta)
+    return SuccessResponse(data=enriched_chats, meta=meta)
 
 
 @router.get('/{chat_id}/messages', response_model=SuccessResponse[list[MessageResponse]])

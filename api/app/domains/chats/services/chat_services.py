@@ -1,5 +1,6 @@
 ﻿import uuid
 
+from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from sqlalchemy import select, func, Integer, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -138,31 +139,60 @@ async def get_chat_participants_by_user(db: AsyncSession, user_id: uuid.UUID):
     return res.scalars().all()
 
 
-async def get_user_chats_with_unread(db: AsyncSession, mongo_db: AsyncIOMotorDatabase, user_id: uuid.UUID):
-    participants = await get_chat_participants_by_user(db, user_id)
+async def enrich_chats_with_mongo_data(
+        mongo_db: AsyncIOMotorDatabase,
+        user_id: uuid.UUID,
+        pg_chats: list
+) -> list[dict]:
+    chat_ids = [chat.id for chat in pg_chats]
 
-    collection = mongo_db["messages"]
-    result_chats = []
+    unread_branches = []
+    for chat in pg_chats:
+        chat_match = {"$eq": ["$chat_id", chat.id]}
+        sender_match = {"$ne": ["$sender_id", user_id]}
 
-    # TODO: Aggregate without N+1 (count + find)
-    for p in participants:
-        query = {
-            "chat_id": p.chat_id,
-            "sender_id": {"$ne": p.user_id}
-        }
+        if getattr(chat, "last_read_message_id", None) and ObjectId.is_valid(chat.last_read_message_id):
+            read_match = {"$gt": ["$_id", ObjectId(chat.last_read_message_id)]}
+            is_unread = {"$and": [chat_match, sender_match, read_match]}
+        else:
+            is_unread = {"$and": [chat_match, sender_match]}
 
-        if p.last_read_message_id:
-            query["_id"] = {"$gt": objectify_id(p.last_read_message_id)}
-
-        unread_count = await collection.count_documents(query)
-
-        last_msg_cursor = collection.find({"chat_id": p.chat_id}).sort("_id", -1).limit(1)
-        last_msg = await last_msg_cursor.to_list(length=1)
-
-        result_chats.append({
-            "chat_id": p.chat_id,
-            "unread_count": unread_count,
-            "last_message": last_msg[0] if last_msg else None
+        unread_branches.append({
+            "case": is_unread,
+            "then": 1
         })
 
-    return result_chats
+    pipeline = [
+        {"$match": {"chat_id": {"$in": chat_ids}}},
+        {"$sort": {"_id": -1}},
+        {"$group": {
+            "_id": "$chat_id",
+            "last_message": {"$first": "$$ROOT"},
+            "unread_count": {
+                "$sum": {"$switch": {"branches": unread_branches, "default": 0}}
+            }
+        }}
+    ]
+
+    collection = mongo_db["messages"]
+    aggregated_data = await collection.aggregate(pipeline).to_list(None)
+
+    mongo_dict = {doc["_id"]: doc for doc in aggregated_data}
+
+    result = []
+    for chat in pg_chats:
+        stats = mongo_dict.get(chat.id, {"unread_count": 0, "last_message": None})
+
+        last_msg = stats["last_message"]
+        if last_msg and "_id" in last_msg:
+            last_msg["_id"] = str(last_msg["_id"])
+
+        result.append({
+            "id": chat.id,
+            "name": getattr(chat, "name", None),
+            "type": getattr(chat, "type", "PRIVATE"),
+            "unread_count": stats["unread_count"],
+            "last_message": last_msg
+        })
+
+    return result
