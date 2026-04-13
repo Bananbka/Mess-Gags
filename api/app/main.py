@@ -15,8 +15,9 @@ from app.domains.chats.routers.chat_routes import router as chats_router
 from app.domains.files.routers.file_routes import router as file_router
 from app.domains.messages.routes.messages_routes import router as messages_router
 from app.domains.messages.routes.ws_router import ws_router
-from app.domains.users.routers.auth import router as auth_router
+from app.domains.users.routers.auth_routes import router as auth_router
 from app.domains.users.routers.profile_routes import router as profile_router
+from app.domains.users.routers.user_routes import router as user_router
 
 from app.infrastructure.minio import minio_manager
 from app.infrastructure.mongo import connect_to_mongo, close_mongo_connection
@@ -60,6 +61,7 @@ async def log_requests(request: Request, call_next):
 
 app.include_router(auth_router)
 app.include_router(profile_router)
+app.include_router(user_router)
 app.include_router(chats_router)
 app.include_router(messages_router)
 app.include_router(ws_router)

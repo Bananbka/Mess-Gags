@@ -30,6 +30,21 @@ async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
     return result.scalar_one_or_none()
 
 
+async def find_users_by_username(db: AsyncSession, username: str,
+                                 current_user_id: uuid.UUID, limit: int) -> (list[User] | None):
+    stmt = (
+        select(User)
+        .where(
+            User.username.ilike(f"%{username}%"),
+            User.id != current_user_id
+        )
+        .limit(limit)
+    )
+    results = await db.execute(stmt)
+    return results.scalars().all()
+
+
+
 async def create_user(db: AsyncSession, user_in: UserCreate) -> User | None:
     existing_user = await get_user_by_username(db, user_in.username)
     if existing_user:

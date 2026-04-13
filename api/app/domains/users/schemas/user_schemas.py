@@ -45,6 +45,16 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class UserSearchResponse(BaseModel):
+    id: uuid.UUID
+    username: str
+    avatar_url: str | None = None
+    bio: str | None = None
+
+    class Config:
+        from_attributes = True
+
+
 class PasswordForgot(BaseModel):
     username: str
     email: EmailStr
