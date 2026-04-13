@@ -1,14 +1,10 @@
-﻿from bson import ObjectId
-from fastapi import APIRouter, Depends
+﻿from fastapi import APIRouter, Depends
 from fastapi import Path
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from redis.asyncio import Redis
 
-from app.core.exceptions import AppException
 from app.core.responses import SuccessResponse
-from app.domains.chats.models import ChatParticipant
 from app.domains.chats.services.chat_services import get_chat_participants_ids
 from app.domains.messages.schemas.messages_schemas import MessageResponse, MessageCreateRequest, MessageUpdateRequest
 from app.domains.messages.schemas.ws_schemas import WSMessageEnvelope, WSEventType

@@ -8,6 +8,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.exceptions import AppException
 from app.domains.chats.models import ChatParticipant
 from app.domains.messages.schemas.messages_schemas import MessageCreateRequest, MessageDocument, MessageResponse
@@ -151,7 +152,7 @@ async def delete_message(
     for attachment in attachments:
         file_url = attachment.get("url")
         if file_url:
-            asyncio.create_task(minio_manager.delete_file(file_url))
+            asyncio.create_task(minio_manager.delete_file(file_url, settings.MINIO_MESSAGE_BUCKET))
 
     await collection.delete_one({"_id": msg["_id"]})
     return msg["chat_id"]

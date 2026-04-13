@@ -16,7 +16,8 @@ class Settings(BaseSettings):
     MINIO_URL: str
     MINIO_USER: str
     MINIO_PASSWORD: str
-    MINIO_BUCKET_NAME: str = "chat-attachments"
+    MINIO_MESSAGE_BUCKET: str = "messages-attachments"
+    MINIO_AVATAR_BUCKET: str = "user-avatars"
 
     # JWT
     SECRET_KEY: str
