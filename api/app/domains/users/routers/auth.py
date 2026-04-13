@@ -39,8 +39,8 @@ async def register(user_in: UserCreate, response: Response,
     otp = await generate_otp(redis, "email-verification", user_in.email)
     send_email.delay(EmailTasks.EMAIL_VERIFICATION.value, user_in.email, otp=otp)
 
-    access_token = create_access_token(data={"sub": user.username})
-    refresh_token = create_refresh_token(data={"sub": user.username})
+    access_token = create_access_token(data={"sub": str(user.id)})
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
 
     set_token_cookie(response, access_token, "access")
     set_token_cookie(response, refresh_token, "refresh")
@@ -83,8 +83,8 @@ async def login(user_in: UserLogin, response: Response, db: AsyncSession = Depen
     if not user or not verify_password(user_in.password, user.hashed_password):
         raise AppException(401, "INVALID_CREDENTIALS", "Incorrect username or password")
 
-    access_token = create_access_token(data={"sub": user.username})
-    refresh_token = create_refresh_token(data={"sub": user.username})
+    access_token = create_access_token(data={"sub": str(user.id)})
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
 
     set_token_cookie(response, access_token, "access")
     set_token_cookie(response, refresh_token, "refresh")
@@ -132,12 +132,6 @@ async def refresh(request: Request, response: Response):
         return SuccessResponse(data={"message": "Token has been successfully updated."})
     except:
         raise AppException(401, "INVALID_REFRESH", "Session error.")
-
-
-### PROFILE
-@router.get("/me", response_model=SuccessResponse[UserResponse])
-async def me(current_user: User = Depends(get_current_user)):
-    return SuccessResponse(data=current_user)
 
 
 ### RESTORE
