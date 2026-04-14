@@ -1,4 +1,5 @@
-﻿import uuid
+﻿import re
+import uuid
 
 import phonenumbers
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_validator
@@ -11,6 +12,15 @@ class UserCreate(BaseModel):
     phone_number: str
     public_key: str
     encrypted_private_key: str
+
+    @field_validator('username')
+    @classmethod
+    def validate_username(cls, v: str):
+        if not re.fullmatch(r'^[a-zA-Z][a-zA-Z0-9_]*$', v):
+            raise ValueError(
+                'Username must start with a letter and contain only letters, numbers, and underscore (_)'
+            )
+        return v
 
     @field_validator('phone_number')
     @classmethod
