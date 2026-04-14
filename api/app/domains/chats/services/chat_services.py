@@ -2,13 +2,12 @@
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from sqlalchemy import select, func, Integer, update
+from sqlalchemy import select, func, Integer, update, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, aliased
 
 from app.core.exceptions import AppException
-from app.domains.chats.models import Chat, ChatParticipant, ChatType, ParticipantRole
-from app.domains.messages.services.messages_service import objectify_id
+from app.domains.chats.models import Chat, ChatParticipant, ChatType, ParticipantRole, Contact
 from app.domains.users.services.user_service import get_user_by_id
 
 
@@ -70,7 +69,7 @@ async def get_user_chats(
         user_id: uuid.UUID,
         limit: int = 20,
         offset: int = 0
-) -> tuple[list[Chat], int]:
+) -> tuple[list, int]:
     count_stmt = (
         select(func.count())
         .select_from(ChatParticipant)
@@ -78,17 +77,42 @@ async def get_user_chats(
     )
     total_count = await db.scalar(count_stmt)
 
+    if total_count == 0:
+        return [], 0
+
+    me = aliased(ChatParticipant)
+    other = aliased(ChatParticipant)
+
     stmt = (
-        select(Chat)
-        .join(ChatParticipant, Chat.id == ChatParticipant.chat_id)
-        .where(ChatParticipant.user_id == user_id)
-        .options(selectinload(Chat.participants))
+        select(
+            Chat,
+            me.last_read_message_id,
+            Contact.alias_name.label("partner_alias")
+        )
+        .join(me, and_(Chat.id == me.chat_id, me.user_id == user_id))
+        .outerjoin(other, and_(Chat.id == other.chat_id, other.user_id != user_id))
+        .outerjoin(
+            Contact,
+            and_(
+                Contact.owner_id == user_id,
+                Contact.contact_id == other.user_id
+            )
+        )
+        .options(
+            selectinload(Chat.participants).selectinload(ChatParticipant.user))
         .order_by(Chat.updated_at.desc())
         .limit(limit)
         .offset(offset)
     )
+
     res = await db.execute(stmt)
-    chats = list(res.scalars().all())
+
+    chats = []
+    for row in res.all():
+        chat = row.Chat
+        chat.last_read_message_id = row.last_read_message_id
+        chat.partner_alias = row.partner_alias
+        chats.append(chat)
 
     return chats, total_count
 
@@ -187,12 +211,25 @@ async def enrich_chats_with_mongo_data(
         if last_msg and "_id" in last_msg:
             last_msg["_id"] = str(last_msg["_id"])
 
+        display_name = chat.title
+        partner_avatar = None
+
+        if chat.chat_type == ChatType.PRIVATE:
+            partner = next((p.user for p in chat.participants if p.user_id != user_id), None)
+
+            if partner:
+                partner_avatar = partner.avatar_url
+                display_name = getattr(chat, "partner_alias", None) or partner.username
+
         result.append({
             "id": chat.id,
-            "name": getattr(chat, "name", None),
-            "type": getattr(chat, "type", "PRIVATE"),
+            "title": display_name,
+            "avatar_url": partner_avatar,
+            "chat_type": chat.chat_type,
             "unread_count": stats["unread_count"],
-            "last_message": last_msg
+            "last_message": last_msg,
+            "created_at": chat.created_at,
+            "updated_at": chat.updated_at,
         })
 
     return result

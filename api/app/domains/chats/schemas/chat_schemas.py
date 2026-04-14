@@ -1,5 +1,7 @@
 ﻿import uuid
 from datetime import datetime
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict
 
 from app.domains.chats.models import ParticipantRole, ChatType
@@ -26,9 +28,15 @@ class ChatParticipantResponse(BaseModel):
 class ChatResponse(BaseModel):
     id: uuid.UUID
     chat_type: ChatType
+
     title: str | None = None
     avatar_url: str | None = None
+
+    unread_count: int = 0
+    last_message: Any = None
+
     created_at: datetime
+    updated_at: datetime | None = None
 
     participants: list[ChatParticipantResponse] = []
 
