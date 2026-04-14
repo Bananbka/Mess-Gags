@@ -20,6 +20,11 @@ async def get_user_by_username(db: AsyncSession, username: str) -> User | None:
     return result.scalar_one_or_none()
 
 
+async def get_user_by_phone(db: AsyncSession, phone_number: str) -> User | None:
+    result = await db.execute(select(User).where(User.phone_number == phone_number))
+    return result.scalar_one_or_none()
+
+
 async def get_user_by_email_and_username(db: AsyncSession, username: str, email: str) -> User | None:
     result = await db.execute(select(User).where(User.username == username, User.email == email))
     return result.scalar_one_or_none()
@@ -42,7 +47,6 @@ async def find_users_by_username(db: AsyncSession, username: str,
     )
     results = await db.execute(stmt)
     return results.scalars().all()
-
 
 
 async def create_user(db: AsyncSession, user_in: UserCreate) -> User | None:
