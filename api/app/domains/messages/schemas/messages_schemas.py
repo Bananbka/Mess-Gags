@@ -32,6 +32,7 @@ class MessageResponse(BaseModel):
     is_read: bool = False
     is_pinned: bool = False
     is_edited: bool = False
+    is_encrypted: bool = True
 
     model_config = ConfigDict(from_attributes=True)
 
