@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from bson import ObjectId
 from bson.errors import InvalidId
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -23,6 +23,20 @@ async def is_user_in_chat(
     stmt = select(ChatParticipant).where(ChatParticipant.user_id == user_id, ChatParticipant.chat_id == chat_id)
     res = await db.execute(stmt)
     return res.scalar_one_or_none()
+
+
+async def is_user_in_all_chats(
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        chat_ids: list[uuid.UUID]
+):
+    stmt = select(func.count()).select_from(ChatParticipant).where(ChatParticipant.user_id == user_id,
+                                                                   ChatParticipant.chat_id.in_(chat_ids))
+
+    res = await db.execute(stmt)
+    cp = res.scalar_one()
+
+    return cp == len(chat_ids)
 
 
 async def get_chat_or_403(db: AsyncSession, chat_id: uuid.UUID, user_id: uuid.UUID) -> Chat:

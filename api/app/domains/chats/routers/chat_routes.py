@@ -9,7 +9,6 @@ from app.core.responses import SuccessResponse
 from app.domains.chats.schemas.chat_schemas import ChatResponse, PrivateChatCreateRequest, GroupChatCreateRequest
 from app.domains.chats.services import chat_services
 from app.domains.messages.schemas.messages_schemas import MessageResponse
-from app.domains.messages.schemas.ws_schemas import WSMessageEnvelope, WSEventType
 from app.domains.messages.services import messages_service
 from app.domains.users.dependencies import get_current_user
 from app.domains.users.models import User
