@@ -4,6 +4,7 @@ from pydantic import BaseModel, field_validator
 
 
 class ProfileRequestSchema(BaseModel):
+    full_name: str
     username: str | None = None
     bio: str | None = None
     avatar_url: str | None = None

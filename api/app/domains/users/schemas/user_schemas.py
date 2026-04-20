@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_validator
 
 
 class UserCreate(BaseModel):
+    full_name: str = Field(..., min_length=1, max_length=30)
     username: str = Field(..., min_length=6, max_length=50)
     password: str = Field(..., min_length=8, max_length=72)
     email: EmailStr
@@ -44,6 +45,7 @@ class UserLogin(BaseModel):
 
 class UserResponse(BaseModel):
     id: uuid.UUID
+    full_name: str
     username: str
     email: EmailStr
     phone_number: str
@@ -57,6 +59,7 @@ class UserResponse(BaseModel):
 
 class UserSearchResponse(BaseModel):
     id: uuid.UUID
+    full_name: str
     username: str
     avatar_url: str | None = None
     bio: str | None = None

@@ -219,7 +219,7 @@ async def enrich_chats_with_mongo_data(
 
             if partner:
                 partner_avatar = partner.avatar_url
-                display_name = getattr(chat, "partner_alias", None) or partner.username
+                display_name = getattr(chat, "partner_alias", None) or partner.full_name
 
         result.append({
             "id": chat.id,
