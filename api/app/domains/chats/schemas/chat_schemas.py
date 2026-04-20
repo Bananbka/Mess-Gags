@@ -13,7 +13,8 @@ class PrivateChatCreateRequest(BaseModel):
 
 class GroupChatCreateRequest(BaseModel):
     title: str
-    description: str | None = None
+    description: str
+    avatar_url: str | None = None
     participant_ids: list[uuid.UUID] = []
 
 

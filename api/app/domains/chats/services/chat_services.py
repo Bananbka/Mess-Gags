@@ -2,12 +2,13 @@
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from sqlalchemy import select, func, Integer, update, and_
+from sqlalchemy import select, func, Integer, update, and_, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, aliased
 
 from app.core.exceptions import AppException
 from app.domains.chats.models import Chat, ChatParticipant, ChatType, ParticipantRole, Contact
+from app.domains.chats.schemas.chat_schemas import GroupChatCreateRequest
 from app.domains.users.services.user_service import get_user_by_id
 
 
@@ -58,6 +59,33 @@ async def get_or_create_private_chat(
     prt2 = ChatParticipant(chat_id=new_chat.id, user_id=target_user_id, role=ParticipantRole.MEMBER)
 
     db.add_all([prt1, prt2])
+    await db.commit()
+
+    await db.refresh(new_chat, ['participants'])
+    return new_chat
+
+
+async def create_group_chat(
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        data: GroupChatCreateRequest
+) -> Chat:
+    new_chat = Chat(
+        **data.model_dump(exclude={'participant_ids'}),
+        chat_type=ChatType.GROUP
+    )
+    db.add(new_chat)
+    await db.flush()
+
+    participant_ids = set(data.participant_ids) - {user_id}
+    cp_to_create = [
+        {"chat_id": new_chat.id, "user_id": pid, "role": ParticipantRole.MEMBER}
+        for pid
+        in participant_ids
+    ]
+    cp_to_create.append({"chat_id": new_chat.id, "user_id": user_id, "role": ParticipantRole.OWNER})
+
+    await db.execute(insert(ChatParticipant), cp_to_create)
     await db.commit()
 
     await db.refresh(new_chat, ['participants'])
@@ -212,8 +240,7 @@ async def enrich_chats_with_mongo_data(
             last_msg["_id"] = str(last_msg["_id"])
 
         display_name = chat.title
-        partner_avatar = None
-
+        partner_avatar = chat.avatar_url
         if chat.chat_type == ChatType.PRIVATE:
             partner = next((p.user for p in chat.participants if p.user_id != user_id), None)
 

@@ -14,6 +14,7 @@ class WSEventType(str, Enum):
     MESSAGE_READ = "message_read"
     USER_OFFLINE = "user_offline"
     USER_ONLINE = "user_online"
+    CHAT_CREATED = "chat_created"
     ERROR = "error"
 
 
