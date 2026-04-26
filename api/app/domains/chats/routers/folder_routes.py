@@ -40,7 +40,9 @@ async def create_folder(
     chat_ids = set(data.chat_ids)
     items_to_create = [{"chat_id": chat_id, "folder_id": folder.id} for chat_id in chat_ids]
 
-    await db.execute(insert(FolderItem), items_to_create)
+    if items_to_create:
+        await db.execute(insert(FolderItem), items_to_create)
+
     await db.commit()
 
     await db.refresh(folder, attribute_names=['items'])
@@ -65,6 +67,23 @@ async def get_folder(
         raise AppException(404, "NOT_FOUND", "There is no your folders with such id.")
 
     return SuccessResponse(data=folder)
+
+
+@router.get("/", response_model=SuccessResponse[list[FolderResponse]])
+async def get_folders(
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db)
+):
+    stmt = (
+        select(ChatFolder)
+        .where(ChatFolder.user_id == user.id)
+        .options(selectinload(ChatFolder.items))
+        .order_by(ChatFolder.created_at.asc())
+    )
+    res = await db.execute(stmt)
+    folders = res.scalars().all()
+
+    return SuccessResponse(data=folders)
 
 
 @router.patch("/{folder_id}", response_model=SuccessResponse[FolderResponse])
@@ -99,7 +118,7 @@ async def update_folder(
         new_chat_ids = set(update_data['chat_ids'])
 
         if not await is_user_in_all_chats(db, user.id, new_chat_ids):
-            raise AppException(404, "NOT_FOUND", "There is no your folders with such id.")
+            raise AppException(403, "FORBIDDEN", "You don't have permission to access some of chats")
 
         to_add = new_chat_ids - current_chat_ids
         to_delete = current_chat_ids - new_chat_ids
