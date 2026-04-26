@@ -9,7 +9,7 @@ from app.core.exceptions import AppException
 from app.core.responses import SuccessResponse
 from app.domains.chats.models import ParticipantRole
 from app.domains.chats.schemas.chat_schemas import ChatResponse, PrivateChatCreateRequest, GroupChatCreateRequest, \
-    UserListRequest
+    UserListRequest, ChatParticipantResponse, ChangeRoleRequest
 from app.domains.chats.services import chat_services
 from app.domains.messages.schemas.messages_schemas import MessageResponse
 from app.domains.messages.services import messages_service
@@ -139,10 +139,37 @@ async def add_participants(
         raise AppException(403, "ACCESS_DENIED", 'You dont have permission to access this chat.')
 
     if chat_p.role == ParticipantRole.MEMBER:
-        raise AppException(403, "ACCESS_DENIED", 'You dont have permission to delete participants in this chat.')
+        raise AppException(403, "ACCESS_DENIED", 'You dont have permission to add participants to this chat.')
 
     await chat_services.add_chat_participants(db, chat_id, data.user_ids)
 
     chat = await chat_services.get_chat_by_id(db, chat_id)
 
     return SuccessResponse(data=chat)
+
+
+@router.post('/{chat_id}/change-role', response_model=SuccessResponse[ChatParticipantResponse])
+async def change_role(
+        data: ChangeRoleRequest, user: User = Depends(get_current_user),
+        chat_id: uuid.UUID = Path(..., description="Chat ID"),
+        db: AsyncSession = Depends(get_db)
+):
+    chat_p = await messages_service.is_user_in_chat(db, user.id, chat_id)
+
+    if chat_p is None:
+        raise AppException(403, "ACCESS_DENIED", 'You dont have permission to access this chat.')
+
+    if await messages_service.is_user_in_chat(db, data.user_id, chat_id) is None:
+        raise AppException(400, "USER_NOT_IN_CHAT", 'This user is not in this chat.')
+
+    if chat_p.role != ParticipantRole.OWNER:
+        raise AppException(403, "ACCESS_DENIED", 'You dont have permission to change roles in this chat.')
+
+    if data.role == ParticipantRole.OWNER:
+        raise AppException(400, "ACCESS_DENIED", 'You cannot give OWNER role to someone.')
+
+    if user.id == data.user_id:
+        raise AppException(403, "ACCESS_DENIED", 'You cannot change your role.')
+
+    cp = await chat_services.change_role(db, chat_id, data.user_id, data.role)
+    return SuccessResponse(data=cp)

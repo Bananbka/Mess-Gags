@@ -46,3 +46,8 @@ class ChatResponse(BaseModel):
 
 class UserListRequest(BaseModel):
     user_ids: list[uuid.UUID]
+
+
+class ChangeRoleRequest(BaseModel):
+    user_id: uuid.UUID
+    role: ParticipantRole

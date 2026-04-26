@@ -292,3 +292,19 @@ async def add_chat_participants(db: AsyncSession, chat_id: uuid.UUID, user_ids: 
     result = await db.execute(stmt)
     await db.commit()
     return result.rowcount
+
+
+async def change_role(db: AsyncSession, chat_id: uuid.UUID, user_id: uuid.UUID,
+                      role: ParticipantRole) -> ChatParticipant | None:
+    stmt = (
+        update(ChatParticipant).where(
+            ChatParticipant.chat_id == chat_id,
+            ChatParticipant.user_id == user_id,
+        ).values(role=role)
+        .returning(ChatParticipant)
+    )
+
+    res = await db.execute(stmt)
+    await db.commit()
+
+    return res.scalar_one_or_none()
