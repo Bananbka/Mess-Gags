@@ -1,7 +1,7 @@
 ﻿import enum
 import uuid
 
-from sqlalchemy import UUID, ForeignKey, Enum, DateTime, func, String
+from sqlalchemy import UUID, ForeignKey, Enum, DateTime, func, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.infrastructure.postgres import Base
@@ -30,3 +30,7 @@ class ChatParticipant(Base):
 
     chat = relationship("Chat", back_populates="participants")
     user = relationship("User", back_populates="chats")
+
+    __table_args__ = (
+        UniqueConstraint('chat_id', 'user_id', name='uq_chat_user'),
+    )

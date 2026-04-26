@@ -2,7 +2,8 @@
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from sqlalchemy import select, func, Integer, update, and_, insert
+from sqlalchemy import select, func, Integer, update, and_, insert, delete
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, aliased
 
@@ -260,3 +261,34 @@ async def enrich_chats_with_mongo_data(
         })
 
     return result
+
+
+async def get_chat_by_id(db, chat_id: uuid.UUID) -> Chat | None:
+    stmt = select(Chat).where(Chat.id == chat_id).options(selectinload(Chat.participants))
+    res = await db.execute(stmt)
+
+    return res.scalar_one_or_none()
+
+
+async def delete_chat_participants(db: AsyncSession, chat_id: uuid.UUID, user_ids: list[uuid.UUID]) -> int:
+    stmt = delete(ChatParticipant).where(
+        ChatParticipant.chat_id == chat_id,
+        ChatParticipant.user_id.in_(user_ids)
+    )
+    res = await db.execute(stmt)
+    await db.commit()
+
+    return res.rowcount
+
+
+async def add_chat_participants(db: AsyncSession, chat_id: uuid.UUID, user_ids: list[uuid.UUID]) -> int:
+    stmt = postgresql.insert(ChatParticipant).values([
+        {"chat_id": chat_id, "user_id": user_id, "role": ParticipantRole.MEMBER}
+        for user_id in user_ids
+    ]).on_conflict_do_nothing(
+        index_elements=["chat_id", "user_id"]
+    )
+
+    result = await db.execute(stmt)
+    await db.commit()
+    return result.rowcount

@@ -5,8 +5,11 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import AppException
 from app.core.responses import SuccessResponse
-from app.domains.chats.schemas.chat_schemas import ChatResponse, PrivateChatCreateRequest, GroupChatCreateRequest
+from app.domains.chats.models import ParticipantRole
+from app.domains.chats.schemas.chat_schemas import ChatResponse, PrivateChatCreateRequest, GroupChatCreateRequest, \
+    UserListRequest
 from app.domains.chats.services import chat_services
 from app.domains.messages.schemas.messages_schemas import MessageResponse
 from app.domains.messages.services import messages_service
@@ -74,6 +77,22 @@ async def get_chats(
     return SuccessResponse(data=enriched_chats, meta=meta)
 
 
+@router.get('/{chat_id}', response_model=SuccessResponse[ChatResponse])
+async def get_chat(
+        chat_id: uuid.UUID,
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db)
+):
+    if await messages_service.is_user_in_chat(db, user.id, chat_id) is None:
+        raise AppException(403, "ACCESS_DENIED", 'You dont have permission to access this chat.')
+
+    chat = await chat_services.get_chat_by_id(db, chat_id)
+    if chat is None:
+        raise AppException(404, "NOT_FOUND", "Chat doesn't exist.")
+
+    return SuccessResponse(data=chat)
+
+
 @router.get('/{chat_id}/messages', response_model=SuccessResponse[list[MessageResponse]])
 async def get_chat_messages(
         chat_id: uuid.UUID = Path(..., description="Chat ID"),
@@ -85,3 +104,45 @@ async def get_chat_messages(
 ):
     messages = await messages_service.get_chat_messages(db, mongo_db, user.id, chat_id, limit, before_id)
     return SuccessResponse(data=messages)
+
+
+@router.post('/{chat_id}/delete-participants', response_model=SuccessResponse[ChatResponse])
+async def delete_participants(
+        data: UserListRequest, user: User = Depends(get_current_user),
+        chat_id: uuid.UUID = Path(..., description="Chat ID"),
+        db: AsyncSession = Depends(get_db),
+):
+    chat_p = await messages_service.is_user_in_chat(db, user.id, chat_id)
+
+    if chat_p is None:
+        raise AppException(403, "ACCESS_DENIED", 'You dont have permission to access this chat.')
+
+    if chat_p.role == ParticipantRole.MEMBER:
+        raise AppException(403, "ACCESS_DENIED", 'You dont have permission to delete participants in this chat.')
+
+    await chat_services.delete_chat_participants(db, chat_id, data.user_ids)
+
+    chat = await chat_services.get_chat_by_id(db, chat_id)
+
+    return SuccessResponse(data=chat)
+
+
+@router.post('/{chat_id}/add-participants', response_model=SuccessResponse[ChatResponse])
+async def add_participants(
+        data: UserListRequest, user: User = Depends(get_current_user),
+        chat_id: uuid.UUID = Path(..., description="Chat ID"),
+        db: AsyncSession = Depends(get_db)
+):
+    chat_p = await messages_service.is_user_in_chat(db, user.id, chat_id)
+
+    if chat_p is None:
+        raise AppException(403, "ACCESS_DENIED", 'You dont have permission to access this chat.')
+
+    if chat_p.role == ParticipantRole.MEMBER:
+        raise AppException(403, "ACCESS_DENIED", 'You dont have permission to delete participants in this chat.')
+
+    await chat_services.add_chat_participants(db, chat_id, data.user_ids)
+
+    chat = await chat_services.get_chat_by_id(db, chat_id)
+
+    return SuccessResponse(data=chat)

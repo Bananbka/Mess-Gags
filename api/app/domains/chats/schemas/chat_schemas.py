@@ -42,3 +42,7 @@ class ChatResponse(BaseModel):
     participants: list[ChatParticipantResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class UserListRequest(BaseModel):
+    user_ids: list[uuid.UUID]
