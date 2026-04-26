@@ -126,7 +126,7 @@ async def refresh(request: Request, response: Response):
         if not payload.get("refresh"):
             raise AppException(401, "INVALID_TOKEN", "Invalid token data.")
 
-        new_access = create_access_token(data={"sub": payload.get("username")})
+        new_access = create_access_token(data={"sub": str(payload.get('id'))})
         set_token_cookie(response, new_access, "access")
 
         return SuccessResponse(data={"message": "Token has been successfully updated."})
@@ -195,8 +195,8 @@ async def change_password(
     logout_time = int(time.time())
     await redis.setex(f"force_logout:{logout_time}", 604800, logout_time)
 
-    new_access_token = create_access_token(data={"sub": current_user.username})
-    new_refresh_token = create_refresh_token(data={"sub": current_user.username})
+    new_access_token = create_access_token(data={"sub": current_user.id})
+    new_refresh_token = create_refresh_token(data={"sub": current_user.id})
 
     set_token_cookie(response, new_access_token, "access")
     set_token_cookie(response, new_refresh_token, "refresh")
