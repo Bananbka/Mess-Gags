@@ -1,0 +1,10 @@
+@use 'ui';
+
+:host {
+    @include ui.auth-page;
+}
+
+.card {
+    @include ui.auth-card;
+    @include ui.auth-form;
+}

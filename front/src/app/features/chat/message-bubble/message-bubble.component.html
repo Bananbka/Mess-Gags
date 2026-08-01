@@ -1,0 +1,87 @@
+@if (!isOwn()) {
+    <app-avatar
+        class="who"
+        size="sm"
+        [name]="sender().name"
+        [seed]="sender().userId"
+        [imageUrl]="sender().avatarUrl"
+    />
+}
+
+<div class="stack">
+    @if (!isOwn() && showSender()) {
+        <p class="sender">
+            <span
+                class="sender-name"
+                [class.is-unresolved]="!sender().resolved"
+                >{{ sender().name }}</span
+            >
+            @if (showVerified()) {
+                <lucide-icon
+                    [img]="shieldCheckIcon"
+                    class="mark is-ok"
+                    title="Signature verified"
+                />
+            }
+        </p>
+    }
+
+    <div class="bubble">
+        @if (view().icon; as statusIcon) {
+            <lucide-icon
+                [img]="statusIcon"
+                class="status-icon"
+            />
+        }
+
+        <div class="content">
+            @if (message().text !== null) {
+                <p class="text">{{ message().text }}</p>
+            } @else {
+                <p class="text is-placeholder">{{ view().placeholder }}</p>
+            }
+
+            <!-- The reason is spelled out rather than encoded in a colour. A user cannot act on
+                 "something is wrong"; they can act on "the signature did not verify". -->
+            @if (view().detail) {
+                <p class="detail">{{ view().detail }}</p>
+            }
+        </div>
+    </div>
+
+    <p class="meta">
+        <span class="time">{{ time() }}</span>
+
+        @if (message().isEdited) {
+            <span class="edited">edited</span>
+        }
+
+        @if (showBroadcastMark()) {
+            <span
+                class="mark is-warn"
+                title="Signed, not encrypted"
+            >
+                <lucide-icon [img]="shieldOffIcon" />
+            </span>
+        }
+
+        @if (isOwn()) {
+            <lucide-icon
+                [img]="checkIcon"
+                class="mark is-sent"
+                title="Sent"
+            />
+        }
+
+        @if (canDelete()) {
+            <button
+                type="button"
+                class="action"
+                aria-label="Delete message"
+                (click)="deleteRequested.emit(message().id)"
+            >
+                <lucide-icon [img]="trashIcon" />
+            </button>
+        }
+    </p>
+</div>

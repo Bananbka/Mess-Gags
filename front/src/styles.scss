@@ -1,1 +1,128 @@
-/* You can add global styles to this file, and also import other style files */
+/**
+ * Design tokens ported from the Figma design (Web-based Messenger Dashboard).
+ *
+ * The palette is dark-only on purpose: the design has no light variant, and inventing one would
+ * mean guessing at the contrast of the security states — which are the one thing in this UI that
+ * must not be ambiguous.
+ */
+
+:root {
+    --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
+
+    --background: #0a0a0c;
+    --foreground: #e8e8ec;
+    --card: #0f0f13;
+    --surface: #1a1a1e;
+    --surface-raised: #1e1e26;
+    --primary: #a358f9;
+    --primary-foreground: #ffffff;
+    --secondary: #1a1a1e;
+    --muted: #25252d;
+    --muted-foreground: #8b8b9a;
+    --placeholder: #4a4a5a;
+    --border: rgb(255 255 255 / 7%);
+    --switch-off: #3d3d4a;
+
+    /* Security-state accents. Deliberately distinct from --primary: an unverified signature or a
+       forged member set must never read as ordinary chrome. */
+    --danger: #f87171;
+    --danger-strong: #fca5a5;
+    --danger-surface: rgb(239 68 68 / 10%);
+    --danger-border: rgb(239 68 68 / 25%);
+    --warn: #fbbf24;
+    --warn-surface: rgb(245 158 11 / 10%);
+    --warn-border: rgb(245 158 11 / 20%);
+    --ok: #34d399;
+
+    --radius: 0.75rem;
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
+    --radius-2xl: calc(var(--radius) + 8px);
+}
+
+* {
+    box-sizing: border-box;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(255 255 255 / 10%) transparent;
+}
+
+html,
+body {
+    height: 100%;
+    margin: 0;
+}
+
+html {
+    font-size: 15px;
+}
+
+body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+    margin: 0;
+    font-weight: 600;
+    line-height: 1.5;
+}
+
+button {
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+}
+
+input,
+textarea {
+    font: inherit;
+}
+
+a {
+    color: var(--primary);
+}
+
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgb(255 255 255 / 8%);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgb(255 255 255 / 16%);
+    background-clip: content-box;
+}
+
+.mono {
+    font-family: var(--font-mono);
+}
+
+/* Visually hidden, still announced. */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}

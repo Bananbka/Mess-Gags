@@ -1,0 +1,33 @@
+@if (!isOnline()) {
+    <!-- Reconnecting is its own state: messages sent while the socket is down still go over HTTP,
+         but nothing new will arrive until it comes back. -->
+    <div
+        class="offline"
+        role="status"
+    >
+        <lucide-icon [img]="wifiOffIcon" />
+        Reconnecting…
+    </div>
+}
+
+<div class="layout">
+    <app-navigation-rail
+        class="rail"
+        [filter]="filter()"
+        (filterChange)="filter.set($event)"
+        (securityRequested)="openSecurity()"
+    />
+
+    <app-chat-sidebar
+        class="sidebar"
+        [class.is-hidden-narrow]="showConversationOnly()"
+        [filter]="filter()"
+    />
+
+    <main
+        class="conversation"
+        [class.is-hidden-narrow]="!showConversationOnly()"
+    >
+        <router-outlet />
+    </main>
+</div>

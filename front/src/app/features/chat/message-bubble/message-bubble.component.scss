@@ -1,0 +1,212 @@
+:host {
+    display: flex;
+    gap: 0.625rem;
+    padding: 0.375rem 1rem;
+}
+
+:host(.is-outgoing) {
+    justify-content: flex-end;
+}
+
+.who {
+    margin-top: 1.25rem;
+}
+
+.stack {
+    display: flex;
+    flex-direction: column;
+    max-width: min(70%, 34rem);
+    min-width: 0;
+}
+
+:host(.is-outgoing) .stack {
+    align-items: flex-end;
+}
+
+.sender {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin: 0 0 0.25rem 0.25rem;
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+/* No profile could be resolved for this id. Saying so beats guessing at a name. */
+.sender-name.is-unresolved {
+    font-style: italic;
+    opacity: 0.8;
+}
+
+.bubble {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    padding: 0.625rem 1rem;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2xl);
+    border-top-left-radius: var(--radius-sm);
+}
+
+:host(.is-outgoing) .bubble {
+    background: var(--primary);
+    border-color: transparent;
+    border-top-left-radius: var(--radius-2xl);
+    border-top-right-radius: var(--radius-sm);
+    color: #fff;
+}
+
+.content {
+    min-width: 0;
+}
+
+.text {
+    margin: 0;
+    font-size: 0.875rem;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.text.is-placeholder {
+    color: var(--muted-foreground);
+    font-style: italic;
+}
+
+.detail {
+    margin: 0.25rem 0 0;
+    font-size: 0.6875rem;
+    line-height: 1.45;
+    opacity: 0.85;
+}
+
+.status-icon {
+    flex-shrink: 0;
+    width: 1rem;
+    height: 1rem;
+    margin-top: 0.1875rem;
+}
+
+/* ── Status tones ────────────────────────────────────────────────────────────────────────────
+   Each unreadable state is visually distinct. `pending` reads as waiting rather than broken;
+   `warn` and `danger` escalate; `inert` reads as archived, not as loading. */
+
+:host([data-tone='pending']) .bubble {
+    border-style: dashed;
+}
+
+:host([data-tone='pending']) .status-icon {
+    color: var(--muted-foreground);
+}
+
+:host([data-tone='warn']) .bubble {
+    background: var(--warn-surface);
+    border-color: var(--warn-border);
+}
+
+:host([data-tone='warn']) .status-icon,
+:host([data-tone='warn']) .detail {
+    color: var(--warn);
+}
+
+:host([data-tone='danger']) .bubble {
+    background: var(--danger-surface);
+    border-color: var(--danger-border);
+}
+
+:host([data-tone='danger']) .status-icon,
+:host([data-tone='danger']) .detail {
+    color: var(--danger);
+}
+
+:host([data-tone='inert']) .bubble {
+    background: transparent;
+    border-style: dotted;
+    opacity: 0.7;
+}
+
+:host([data-tone='inert']) .status-icon {
+    color: var(--muted-foreground);
+}
+
+/* An outgoing bubble keeps its status treatment rather than the primary fill, so a failure on our
+   own side is not disguised as a delivered message. */
+:host(.is-outgoing[data-tone='warn']) .bubble,
+:host(.is-outgoing[data-tone='danger']) .bubble,
+:host(.is-outgoing[data-tone='pending']) .bubble,
+:host(.is-outgoing[data-tone='inert']) .bubble {
+    color: var(--foreground);
+}
+
+:host(.is-outgoing[data-tone='pending']) .bubble,
+:host(.is-outgoing[data-tone='inert']) .bubble {
+    background: var(--surface-raised);
+}
+
+.meta {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin: 0.25rem 0.25rem 0;
+    color: var(--muted-foreground);
+    font-size: 0.6875rem;
+}
+
+:host(.is-outgoing) .meta {
+    flex-direction: row-reverse;
+}
+
+.edited {
+    font-style: italic;
+}
+
+.mark {
+    display: inline-flex;
+    width: 0.875rem;
+    height: 0.875rem;
+
+    lucide-icon {
+        width: 100%;
+        height: 100%;
+    }
+
+    &.is-ok {
+        color: var(--primary);
+    }
+
+    &.is-warn {
+        color: var(--warn);
+    }
+
+    &.is-sent {
+        color: var(--muted-foreground);
+    }
+}
+
+.action {
+    display: inline-flex;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--muted-foreground);
+    opacity: 0;
+    transition:
+        opacity 0.15s ease,
+        color 0.15s ease;
+
+    lucide-icon {
+        width: 0.875rem;
+        height: 0.875rem;
+    }
+
+    &:hover {
+        color: var(--danger);
+    }
+}
+
+:host(:hover) .action,
+.action:focus-visible {
+    opacity: 1;
+}

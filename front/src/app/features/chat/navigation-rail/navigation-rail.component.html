@@ -1,0 +1,75 @@
+<app-brand-mark
+    class="mark"
+    [showName]="false"
+/>
+
+<nav
+    class="tabs"
+    aria-label="Chat sections"
+>
+    @for (tab of tabs; track tab.id) {
+        <button
+            type="button"
+            class="rail-button"
+            [class.is-active]="filter() === tab.id"
+            [attr.aria-current]="filter() === tab.id ? 'page' : null"
+            [title]="tab.label"
+            (click)="filterChange.emit(tab.id)"
+        >
+            <lucide-icon [img]="tab.icon" />
+            <span class="sr-only">{{ tab.label }}</span>
+        </button>
+    }
+</nav>
+
+<div class="foot">
+    <!-- One tap from anywhere: the safety number is the only defence against a substituted key, so
+         burying it would undermine the guarantee it exists to protect. -->
+    <button
+        type="button"
+        class="rail-button"
+        title="Safety number"
+        (click)="securityRequested.emit()"
+    >
+        <lucide-icon [img]="shieldIcon" />
+        <span class="sr-only">Safety number</span>
+    </button>
+
+    <div class="account">
+        <button
+            type="button"
+            class="account-trigger"
+            [attr.aria-expanded]="menuOpen()"
+            (click)="menuOpen.set(!menuOpen())"
+        >
+            <app-avatar
+                size="sm"
+                [name]="user()?.full_name ?? 'You'"
+                [seed]="user()?.id ?? ''"
+                [imageUrl]="user()?.avatar ?? null"
+            />
+            <span class="sr-only">Account</span>
+        </button>
+
+        @if (menuOpen()) {
+            <div
+                class="menu"
+                role="menu"
+            >
+                <p class="menu-head">
+                    <span class="menu-name">{{ user()?.full_name }}</span>
+                    <span class="menu-username">&#64;{{ user()?.username }}</span>
+                </p>
+                <button
+                    type="button"
+                    role="menuitem"
+                    class="menu-item is-danger"
+                    (click)="signOut()"
+                >
+                    <lucide-icon [img]="logOutIcon" />
+                    Sign out
+                </button>
+            </div>
+        }
+    </div>
+</div>

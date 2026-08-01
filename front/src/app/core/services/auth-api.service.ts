@@ -35,6 +35,18 @@ export class AuthApiService {
         return this.http.post<SuccessResponse<UserProfile>>(`${this.apiUrl}register`, data).pipe(map((r) => r.data));
     }
 
+    /**
+     * Re-issue the OTP.
+     *
+     * Takes no address: the endpoint reads the recipient from the (unverified) session that
+     * `register` established, so a caller cannot aim verification mail at somebody else's inbox.
+     */
+    resendVerificationEmail(): Observable<unknown> {
+        return this.http
+            .post<SuccessResponse<unknown>>(`${this.apiUrl}get-verification-email`, {})
+            .pipe(map((r) => r.data));
+    }
+
     verifyEmail(email: string, otp: string): Observable<UserProfile> {
         return this.http
             .post<SuccessResponse<UserProfile>>(`${this.apiUrl}verify-email`, { email, otp })

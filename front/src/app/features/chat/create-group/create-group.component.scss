@@ -1,0 +1,6 @@
+@use 'ui';
+
+:host {
+    @include ui.screen-page;
+    @include ui.people-picker;
+}

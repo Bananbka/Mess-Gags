@@ -1,0 +1,138 @@
+<header class="head">
+    <button
+        type="button"
+        class="back"
+        aria-label="Back to conversation"
+        (click)="back()"
+    >
+        <lucide-icon [img]="arrowLeftIcon" />
+    </button>
+    <div>
+        <h2>Safety number</h2>
+        <p class="head-sub">{{ peer().name }}</p>
+    </div>
+</header>
+
+<div class="body">
+    @if (loading()) {
+        <p class="muted">Computing…</p>
+    } @else if (error()) {
+        <p
+            class="error"
+            role="alert"
+        >
+            {{ error() }}
+        </p>
+    } @else {
+        <!-- The key-changed variant. This is precisely the signature of a server substituting a
+             public key, so it leads the screen and refuses to re-trust silently. -->
+        @if (state()?.kind === 'changed') {
+            <section
+                class="alarm"
+                role="alert"
+            >
+                <lucide-icon [img]="shieldAlertIcon" />
+                <div>
+                    <p class="alarm-title">This safety number has changed</p>
+                    <p class="alarm-note">
+                        You marked {{ peer().name }} as verified, and their number is now different. That happens when
+                        they reinstall or add a device — and it is also exactly what it looks like when the server
+                        substitutes a key so it can read your messages. Compare the new number below in person or over a
+                        call you trust before accepting it. Do not accept it because this screen asked you to.
+                    </p>
+                </div>
+            </section>
+        } @else if (state()?.kind === 'verified') {
+            <section class="confirmed">
+                <lucide-icon [img]="shieldCheckIcon" />
+                <div>
+                    <p class="confirmed-title">Verified</p>
+                    <p class="confirmed-note">
+                        You confirmed this number with {{ peer().name }} out of band. It has not changed since.
+                    </p>
+                </div>
+            </section>
+        } @else {
+            <section class="notice">
+                <lucide-icon [img]="infoIcon" />
+                <span>
+                    Compare these digits with {{ peer().name }} in person, or over a channel you already trust — not
+                    through this app. If they match, no key has been substituted and the conversation is private. If
+                    they do not, stop and do not send anything sensitive.
+                </span>
+            </section>
+        }
+
+        <div class="compare">
+            @if (qrDataUrl()) {
+                <figure class="qr">
+                    <img
+                        [src]="qrDataUrl()"
+                        alt="QR code of this safety number"
+                    />
+                    <figcaption>Scan to compare</figcaption>
+                </figure>
+            }
+
+            <div class="digits">
+                <p class="section">{{ groups().length }} groups of five</p>
+                <ol class="grid">
+                    @for (group of groups(); track $index) {
+                        <li class="mono group">{{ group }}</li>
+                    }
+                </ol>
+            </div>
+        </div>
+
+        <div class="full">
+            <div class="full-head">
+                <p class="full-label">Full fingerprint</p>
+                <button
+                    type="button"
+                    class="copy"
+                    (click)="copy()"
+                >
+                    <lucide-icon [img]="copied() ? checkIcon : copyIcon" />
+                    {{ copied() ? 'Copied' : 'Copy' }}
+                </button>
+            </div>
+            <p class="mono full-value">{{ safetyNumber() }}</p>
+        </div>
+
+        @switch (state()?.kind) {
+            @case ('changed') {
+                <button
+                    type="button"
+                    class="submit is-danger"
+                    (click)="acceptChange()"
+                >
+                    I compared the new number out of band — accept it
+                </button>
+            }
+            @case ('verified') {
+                <button
+                    type="button"
+                    class="ghost"
+                    (click)="reset()"
+                >
+                    Clear verification
+                </button>
+            }
+            @default {
+                <button
+                    type="button"
+                    class="submit"
+                    (click)="markVerified()"
+                >
+                    <lucide-icon [img]="shieldCheckIcon" />
+                    The numbers match — mark as verified
+                </button>
+            }
+        }
+
+        <p class="muted small">
+            Verification is remembered on this device only. It is what lets this app tell you when
+            {{ peer().name }}'s key changes later.
+        </p>
+    }
+</div>

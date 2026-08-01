@@ -27,6 +27,14 @@ interface UnlockedIdentity {
     identityPrivate: Uint8Array;
 }
 
+/**
+ * The observable milestones of an unlock. These are real stages, not interpolated percentages —
+ * Argon2id offers no progress callback, and inventing one would misrepresent how far along we are.
+ */
+export type UnlockStage = 'fetching' | 'deriving' | 'opening';
+
+export type UnlockStageReporter = (stage: UnlockStage) => void | Promise<void>;
+
 /** A chain we own and send on, for one (chat, epoch). */
 interface OwnChain {
     senderKeyId: string;
@@ -109,8 +117,13 @@ export class KeyStoreService {
      *
      * Argon2id at 64 MiB is deliberately slow — that cost is what protects the bundle if the
      * database is ever disclosed. Callers should show a spinner rather than assume it is instant.
+     *
+     * `onStage` reports the real milestones so the UI can show honest progress. It is awaited
+     * between stages because the derivation is synchronous and blocks the main thread: without
+     * yielding, the stage that is about to run would never paint.
      */
-    async unlock(userId: string, password: string): Promise<boolean> {
+    async unlock(userId: string, password: string, onStage?: UnlockStageReporter): Promise<boolean> {
+        await onStage?.('fetching');
         const identities = await firstValueFrom(this.cryptoApi.getOwnIdentities());
         const mine = identities.find((i) => i.device_id === this.deviceId) ?? identities[0];
 
@@ -119,7 +132,9 @@ export class KeyStoreService {
         }
 
         try {
+            await onStage?.('deriving');
             const opened = await unwrapPrivateBundle(mine.encrypted_private_bundle, mine.kdf_params as never, password);
+            await onStage?.('opening');
 
             this.identity = {
                 userId,

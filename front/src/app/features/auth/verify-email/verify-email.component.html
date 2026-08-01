@@ -1,0 +1,73 @@
+<div class="card">
+    <a
+        class="back"
+        routerLink="/register"
+    >
+        <lucide-icon [img]="arrowLeftIcon" />
+        Back
+    </a>
+
+    <span class="badge">
+        <lucide-icon [img]="shieldIcon" />
+    </span>
+
+    <h1>Verify your email</h1>
+    <p class="subtitle">
+        Enter the 6-digit code sent to
+        <strong>{{ email() || 'your email address' }}</strong>
+    </p>
+
+    <div
+        class="code"
+        role="group"
+        aria-label="Verification code"
+    >
+        @for (digit of digits(); track $index) {
+            <input
+                #box
+                type="text"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                class="mono"
+                maxlength="6"
+                [attr.aria-label]="'Digit ' + ($index + 1)"
+                [value]="digit"
+                (input)="onInput($index, $event)"
+                (keydown)="onKeydown($index, $event)"
+            />
+        }
+    </div>
+
+    @if (error()) {
+        <p
+            class="error"
+            role="alert"
+        >
+            {{ error() }}
+        </p>
+    }
+
+    <p class="resend">
+        @if (countdown() > 0) {
+            Resend code in <span class="mono">{{ countdownLabel() }}</span>
+        } @else {
+            <button
+                type="button"
+                class="link"
+                [disabled]="resending()"
+                (click)="resend()"
+            >
+                {{ resending() ? 'Sending…' : 'Resend code' }}
+            </button>
+        }
+    </p>
+
+    <button
+        type="button"
+        class="submit"
+        [disabled]="!isComplete() || submitting()"
+        (click)="submit()"
+    >
+        {{ submitting() ? 'Verifying…' : 'Verify' }}
+    </button>
+</div>

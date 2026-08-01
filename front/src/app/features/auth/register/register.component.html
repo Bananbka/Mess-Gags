@@ -1,0 +1,121 @@
+<div class="card">
+    <app-brand-mark class="brand" />
+
+    <h1>Create account</h1>
+    <p class="subtitle">End-to-end encrypted by default.</p>
+
+    <form
+        [formGroup]="form"
+        (ngSubmit)="submit()"
+    >
+        <div class="fields">
+            <div class="field">
+                <label for="fullName">Full name</label>
+                <input
+                    id="fullName"
+                    type="text"
+                    autocomplete="name"
+                    placeholder="Alice Kowalski"
+                    formControlName="fullName"
+                />
+            </div>
+
+            <div class="field">
+                <label for="username">Username</label>
+                <input
+                    id="username"
+                    type="text"
+                    autocomplete="username"
+                    placeholder="alice_k"
+                    formControlName="username"
+                />
+                @if (form.controls.username.touched && form.controls.username.invalid) {
+                    <p class="hint is-error">
+                        At least 6 characters, starting with a letter. Letters, digits and underscore only.
+                    </p>
+                }
+            </div>
+
+            <div class="field">
+                <label for="email">Email</label>
+                <input
+                    id="email"
+                    type="email"
+                    autocomplete="email"
+                    placeholder="alice@example.com"
+                    formControlName="email"
+                />
+            </div>
+
+            <div class="field">
+                <label for="phone">Phone number</label>
+                <input
+                    id="phone"
+                    type="tel"
+                    autocomplete="tel"
+                    placeholder="+48123456789"
+                    formControlName="phoneNumber"
+                />
+                @if (form.controls.phoneNumber.touched && form.controls.phoneNumber.invalid) {
+                    <p class="hint is-error">Include the country code, for example +48123456789.</p>
+                }
+            </div>
+
+            <div class="field">
+                <label for="password">Password</label>
+                <div class="with-affix">
+                    <input
+                        id="password"
+                        [type]="showPassword() ? 'text' : 'password'"
+                        autocomplete="new-password"
+                        placeholder="12+ characters"
+                        formControlName="password"
+                    />
+                    <button
+                        type="button"
+                        class="affix"
+                        [attr.aria-label]="showPassword() ? 'Hide password' : 'Show password'"
+                        (click)="showPassword.set(!showPassword())"
+                    >
+                        <lucide-icon [img]="showPassword() ? eyeOffIcon : eyeIcon" />
+                    </button>
+                </div>
+                @if (form.controls.password.touched && form.controls.password.invalid) {
+                    <p class="hint is-error">Use at least 12 characters.</p>
+                }
+            </div>
+        </div>
+
+        <!-- Not decoration: the password is the only thing standing between a database disclosure
+             and the user's private keys, so the consequence is stated where it is chosen. -->
+        <div class="notice">
+            <lucide-icon [img]="shieldCheckIcon" />
+            <span>
+                Your password derives your encryption keys on this device. It never leaves it, and it cannot be
+                recovered — resetting it destroys access to all past messages.
+            </span>
+        </div>
+
+        @if (error()) {
+            <p
+                class="error"
+                role="alert"
+            >
+                {{ error() }}
+            </p>
+        }
+
+        <button
+            type="submit"
+            class="submit"
+            [disabled]="submitting()"
+        >
+            {{ submitting() ? 'Creating account…' : 'Create account' }}
+        </button>
+    </form>
+
+    <p class="foot">
+        Already have an account?
+        <a routerLink="/login">Sign in</a>
+    </p>
+</div>

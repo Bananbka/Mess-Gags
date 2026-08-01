@@ -1,0 +1,58 @@
+@if (rekeying()) {
+    <div
+        class="strip"
+        role="status"
+    >
+        <lucide-icon
+            [img]="refreshIcon"
+            class="spin"
+        />
+        Re-keying after a membership change — new messages will use the new epoch.
+    </div>
+}
+
+@if (!canSend()) {
+    <!-- Hard block. Distributing keys to a roster we cannot verify is the one thing the client must
+         refuse outright, so the composer is disabled rather than left to fail on submit. -->
+    <div
+        class="strip is-danger"
+        role="alert"
+    >
+        <lucide-icon [img]="shieldAlertIcon" />
+        {{ blockedReason() ?? 'Sending is blocked until the member set can be verified.' }}
+    </div>
+}
+
+<div class="row">
+    <button
+        type="button"
+        class="side"
+        aria-label="Attach a file"
+        disabled
+        title="Attachments are not available yet — there is no download endpoint"
+    >
+        <lucide-icon [img]="paperclipIcon" />
+    </button>
+
+    <div class="input">
+        <textarea
+            #area
+            rows="1"
+            [placeholder]="canSend() ? placeholder() : 'Sending is blocked'"
+            [disabled]="!canSend()"
+            [value]="text()"
+            (input)="onInput($any($event.target).value)"
+            (keydown)="onKeydown($event)"
+        ></textarea>
+    </div>
+
+    <button
+        type="button"
+        class="send"
+        aria-label="Send message"
+        [disabled]="!text().trim() || !canSend()"
+        (click)="send()"
+    >
+        <lucide-icon [img]="sendIcon" />
+    </button>
+</div>

@@ -1,0 +1,149 @@
+<div class="head">
+    <div class="search">
+        <lucide-icon [img]="searchIcon" />
+        <input
+            type="search"
+            placeholder="Search…"
+            aria-label="Search chats and people"
+            [value]="query()"
+            (input)="onQuery($any($event.target).value)"
+        />
+    </div>
+
+    <div class="new">
+        <button
+            type="button"
+            class="new-trigger"
+            aria-label="New conversation"
+            [attr.aria-expanded]="menuOpen()"
+            (click)="menuOpen.set(!menuOpen())"
+        >
+            <lucide-icon [img]="plusIcon" />
+        </button>
+
+        @if (menuOpen()) {
+            <div
+                class="menu"
+                role="menu"
+            >
+                <button
+                    type="button"
+                    role="menuitem"
+                    class="menu-item"
+                    (click)="goTo(['/new/group'])"
+                >
+                    <lucide-icon [img]="usersIcon" />
+                    New group
+                </button>
+                <button
+                    type="button"
+                    role="menuitem"
+                    class="menu-item"
+                    (click)="goTo(['/new/channel'])"
+                >
+                    <lucide-icon [img]="hashIcon" />
+                    New channel
+                </button>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="list">
+    @if (loading() && chats().length === 0) {
+        @for (skeleton of [0, 1, 2, 3, 4]; track skeleton) {
+            <div class="row is-skeleton">
+                <span class="skeleton-avatar"></span>
+                <div class="skeleton-lines">
+                    <span class="skeleton-line"></span>
+                    <span class="skeleton-line is-short"></span>
+                </div>
+            </div>
+        }
+    } @else if (error()) {
+        <p class="empty is-error">{{ error() }}</p>
+    } @else if (visibleChats().length === 0 && newContacts().length === 0) {
+        <p class="empty">
+            @if (query()) {
+                Nothing matches “{{ query() }}”.
+            } @else {
+                No conversations yet. Use the + button to start one.
+            }
+        </p>
+    }
+
+    @for (chat of visibleChats(); track chat.id) {
+        <button
+            type="button"
+            class="row"
+            [class.is-active]="activeChatId() === chat.id"
+            (click)="openChat(chat.id)"
+        >
+            <app-avatar
+                [name]="titleOf(chat)"
+                [seed]="chat.id"
+                [imageUrl]="chat.avatar_url"
+            />
+
+            <span class="body">
+                <span class="line">
+                    <span class="title-wrap">
+                        <span class="title">{{ titleOf(chat) }}</span>
+                        <!-- Channels are signed but deliberately not encrypted. Showing the same lock
+                             as a private chat would claim a guarantee that does not exist. -->
+                        @if (chat.chat_type === 'channel') {
+                            <span class="badge is-warn">
+                                <lucide-icon [img]="shieldOffIcon" />
+                                Signed
+                            </span>
+                        }
+                    </span>
+                    <span class="time">{{ timeOf(chat) }}</span>
+                </span>
+
+                <span class="line">
+                    <span
+                        class="preview"
+                        [class.is-sealed]="!preview(chat).readable"
+                    >
+                        @if (!preview(chat).readable) {
+                            <lucide-icon
+                                [img]="lockIcon"
+                                class="preview-icon"
+                            />
+                        }
+                        {{ preview(chat).text }}
+                    </span>
+                    @if (chat.unread_count > 0) {
+                        <span class="unread">{{ chat.unread_count }}</span>
+                    }
+                </span>
+            </span>
+        </button>
+    }
+
+    @if (newContacts().length > 0) {
+        <p class="section">Start a chat</p>
+        @for (person of newContacts(); track person.id) {
+            <button
+                type="button"
+                class="row"
+                (click)="startPrivateChat(person)"
+            >
+                <app-avatar
+                    [name]="person.full_name"
+                    [seed]="person.id"
+                    [imageUrl]="person.avatar_url"
+                />
+                <span class="body">
+                    <span class="line">
+                        <span class="title">{{ person.full_name }}</span>
+                    </span>
+                    <span class="line">
+                        <span class="preview">&#64;{{ person.username }}</span>
+                    </span>
+                </span>
+            </button>
+        }
+    }
+</div>

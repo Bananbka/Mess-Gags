@@ -1,0 +1,251 @@
+@if (!chat()) {
+    <div class="placeholder">
+        @if (chatId()) {
+            <!-- Deep link: the id is known but the chat list is still in flight, so this is loading
+                 rather than "nothing selected". -->
+            <p class="placeholder-note">Opening conversation…</p>
+        } @else {
+            <lucide-icon [img]="messageSquareIcon" />
+            <p class="placeholder-title">No conversation selected</p>
+            <p class="placeholder-note">Pick a chat from the list, or start a new one.</p>
+        }
+    </div>
+} @else {
+    <header class="head">
+        <button
+            type="button"
+            class="back"
+            aria-label="Back to chats"
+            (click)="backToList()"
+        >
+            <lucide-icon [img]="arrowLeftIcon" />
+        </button>
+
+        <a
+            class="identity"
+            [routerLink]="['/chats', chat()!.id, 'info']"
+        >
+            <app-avatar
+                [name]="title()"
+                [seed]="chat()!.id"
+                [imageUrl]="chat()!.avatar_url"
+            />
+            <span class="identity-text">
+                <span class="identity-line">
+                    <span class="identity-name">{{ title() }}</span>
+                    @if (isChannel()) {
+                        <span class="badge is-warn">
+                            <lucide-icon [img]="shieldOffIcon" />
+                            Signed · not encrypted
+                        </span>
+                    }
+                </span>
+                <span class="identity-sub">{{ subtitle() }}</span>
+            </span>
+        </a>
+
+        <div class="head-actions">
+            @if (peerId()) {
+                <button
+                    type="button"
+                    class="head-button"
+                    aria-label="Safety number"
+                    title="Safety number"
+                    (click)="openSafetyNumber()"
+                >
+                    <lucide-icon [img]="shieldIcon" />
+                </button>
+            }
+            <a
+                class="head-button"
+                aria-label="Chat info"
+                title="Chat info"
+                [routerLink]="['/chats', chat()!.id, 'info']"
+            >
+                <lucide-icon [img]="infoIcon" />
+            </a>
+        </div>
+    </header>
+
+    <!-- The highest-severity state in the app. The server may have inserted a device that would
+         receive future messages, so this reads as "the server may be lying to you" and blocks key
+         distribution rather than offering a way past it. -->
+    @if (memberVerificationError() && !bannerDismissed()) {
+        <div
+            class="alarm"
+            role="alert"
+        >
+            <lucide-icon [img]="shieldAlertIcon" />
+            <div class="alarm-body">
+                <p class="alarm-title">Member verification failed — the server may be lying to you</p>
+                <p class="alarm-note">
+                    The member list for this chat does not match the commitment recorded for its current key epoch. A
+                    device may have been added that would be able to read your future messages. Keys will not be
+                    distributed and sending is blocked. Verify the members out of band before continuing.
+                </p>
+            </div>
+            <div class="alarm-actions">
+                <a
+                    class="alarm-button"
+                    [routerLink]="['/chats', chat()!.id, 'info']"
+                    >Review members</a
+                >
+                <button
+                    type="button"
+                    class="alarm-dismiss"
+                    aria-label="Hide this warning"
+                    (click)="bannerDismissed.set(true)"
+                >
+                    <lucide-icon [img]="closeIcon" />
+                </button>
+            </div>
+        </div>
+    }
+
+    @if (showChannelNotice()) {
+        <p class="channel-notice">
+            <lucide-icon [img]="shieldOffIcon" />
+            Posts here are signed so you can verify who wrote them, but they are
+            <strong>not encrypted</strong> — the server and every subscriber can read them.
+        </p>
+    }
+
+    <div
+        class="scroll"
+        #scroller
+        (scroll)="onScroll()"
+    >
+        @if (loading() && conversation().length === 0) {
+            <p class="status">Decrypting conversation…</p>
+        }
+
+        @if (hasMoreHistory() && conversation().length > 0) {
+            <p class="status">
+                @if (loading()) {
+                    Loading earlier messages…
+                } @else {
+                    Scroll up for earlier messages
+                }
+            </p>
+        }
+
+        @for (item of conversation(); track $index) {
+            @switch (item.kind) {
+                @case ('history-floor') {
+                    <!-- Permanent, not loading. The server withholds pre-join ciphertext entirely so
+                         that sender, timing, size and reply structure cannot leak. -->
+                    <div class="divider">
+                        <span class="divider-rule"></span>
+                        <span class="divider-pill">
+                            <lucide-icon [img]="skipForwardIcon" />
+                            Messages before you joined are unavailable
+                        </span>
+                        <span class="divider-rule"></span>
+                    </div>
+                }
+
+                @case ('encryption-boundary') {
+                    <div class="divider is-warn">
+                        <span class="divider-rule"></span>
+                        <span class="divider-pill">
+                            <lucide-icon [img]="shieldOffIcon" />
+                            Messages before this point were not encrypted
+                        </span>
+                        <span class="divider-rule"></span>
+                    </div>
+                }
+
+                @case ('message') {
+                    <app-message-bubble
+                        [message]="item.message"
+                        [showSender]="isGroupLike()"
+                        [canDelete]="canDelete(item.message.senderId)"
+                        (deleteRequested)="deleteMessage($event)"
+                    />
+                }
+
+                @case ('pending') {
+                    <div class="pending">
+                        <div
+                            class="pending-bubble"
+                            [class.is-failed]="item.pending.status === 'failed'"
+                        >
+                            {{ item.pending.text }}
+                        </div>
+
+                        @if (item.pending.status === 'sending') {
+                            <p class="pending-meta">Encrypting and sending…</p>
+                        } @else {
+                            <div
+                                class="pending-error"
+                                role="alert"
+                            >
+                                <lucide-icon [img]="alertIcon" />
+                                <span>
+                                    @if (item.pending.rekeyFailure) {
+                                        Send failed — the chat re-keyed again mid-send.
+                                    } @else {
+                                        Send failed.
+                                    }
+                                </span>
+                                <button
+                                    type="button"
+                                    class="pending-action"
+                                    (click)="retry(item.pending.localId)"
+                                >
+                                    <lucide-icon [img]="refreshIcon" />
+                                    Retry
+                                </button>
+                                <button
+                                    type="button"
+                                    class="pending-action"
+                                    (click)="discard(item.pending.localId)"
+                                >
+                                    Discard
+                                </button>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        }
+
+        @if (isRekeying()) {
+            <div class="rekey">
+                <lucide-icon
+                    [img]="refreshIcon"
+                    class="spin"
+                />
+                <div>
+                    <p class="rekey-title">Chat is re-keying</p>
+                    <p class="rekey-note">Membership changed, so a new key epoch is opening.</p>
+                </div>
+            </div>
+        }
+
+        @if (!loading() && conversation().length === 0) {
+            <div class="status-block">
+                <p class="status">No messages in this conversation yet.</p>
+                <button
+                    type="button"
+                    class="ghost"
+                    (click)="refreshKeys()"
+                >
+                    <lucide-icon [img]="refreshIcon" />
+                    Refresh keys
+                </button>
+            </div>
+        }
+    </div>
+
+    <app-composer
+        [canSend]="canSend()"
+        [blockedReason]="
+            memberVerificationError() ? 'Blocked: the member set for this chat could not be verified.' : null
+        "
+        [rekeying]="isRekeying()"
+        [placeholder]="isChannel() ? 'Post to channel…' : 'Message…'"
+        (submitted)="send($event)"
+        (typing)="onTyping($event)"
+    />
+}

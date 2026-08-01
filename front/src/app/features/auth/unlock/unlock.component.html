@@ -1,0 +1,89 @@
+<div class="card">
+    <span class="badge">
+        <lucide-icon [img]="keyIcon" />
+    </span>
+
+    <h1>Unlock</h1>
+    <p class="subtitle">Enter your password to decrypt your keys.</p>
+
+    @if (phase() === 'input') {
+        <form
+            [formGroup]="form"
+            (ngSubmit)="run()"
+        >
+            <div class="field with-affix">
+                <label
+                    for="password"
+                    class="sr-only"
+                    >Password</label
+                >
+                <input
+                    id="password"
+                    [type]="showPassword() ? 'text' : 'password'"
+                    autocomplete="current-password"
+                    placeholder="Your password"
+                    formControlName="password"
+                />
+                <button
+                    type="button"
+                    class="affix"
+                    [attr.aria-label]="showPassword() ? 'Hide password' : 'Show password'"
+                    (click)="showPassword.set(!showPassword())"
+                >
+                    <lucide-icon [img]="showPassword() ? eyeOffIcon : eyeIcon" />
+                </button>
+            </div>
+
+            @if (error()) {
+                <p
+                    class="error"
+                    role="alert"
+                >
+                    {{ error() }}
+                </p>
+            }
+
+            <button
+                type="submit"
+                class="submit"
+            >
+                Unlock
+            </button>
+        </form>
+    } @else {
+        <div
+            class="progress-card"
+            aria-live="polite"
+        >
+            <div class="progress-head">
+                <span class="progress-title">Key derivation</span>
+                <span class="mono progress-value">{{ progress() }}%</span>
+            </div>
+            <div
+                class="track"
+                role="progressbar"
+                aria-label="Key derivation"
+                [attr.aria-valuenow]="progress()"
+                aria-valuemin="0"
+                aria-valuemax="100"
+            >
+                <div
+                    class="bar"
+                    [style.width.%]="progress()"
+                ></div>
+            </div>
+            <p class="mono stage">
+                {{ phase() === 'done' ? '✓ ' + stageLabel() : stageLabel() }}
+            </p>
+        </div>
+
+        @if (phase() === 'done' && provisioned()) {
+            <p class="note">A new identity key was created for this device and published to your account.</p>
+        } @else {
+            <p class="note">
+                This takes a moment on purpose — slow key derivation is what makes an offline guessing attack on your
+                bundle infeasible.
+            </p>
+        }
+    }
+</div>

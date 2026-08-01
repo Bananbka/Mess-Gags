@@ -1,0 +1,32 @@
+@if (imageUrl()) {
+    <img
+        class="face"
+        [src]="imageUrl()"
+        [alt]="name()"
+    />
+} @else {
+    <span
+        class="face monogram"
+        [style.background-color]="color()"
+        aria-hidden="true"
+    >
+        @if (isChannel()) {
+            <lucide-icon
+                [img]="hashIcon"
+                class="hash"
+            />
+        } @else {
+            {{ monogram() }}
+        }
+    </span>
+    <span class="sr-only">{{ name() }}</span>
+}
+
+@if (online() !== undefined) {
+    <span
+        class="presence"
+        [class.is-online]="online()"
+    >
+        <span class="sr-only">{{ online() ? 'Online' : 'Offline' }}</span>
+    </span>
+}

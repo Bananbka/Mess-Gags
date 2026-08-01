@@ -1,0 +1,197 @@
+<header class="head">
+    <button
+        type="button"
+        class="back"
+        aria-label="Back to conversation"
+        (click)="back()"
+    >
+        <lucide-icon [img]="arrowLeftIcon" />
+    </button>
+    <h2>Chat info</h2>
+</header>
+
+<div class="body">
+    @if (loading()) {
+        <p class="muted">Loading…</p>
+    } @else if (error()) {
+        <p
+            class="error"
+            role="alert"
+        >
+            {{ error() }}
+        </p>
+    } @else if (chat()) {
+        <section class="profile">
+            <app-avatar
+                size="lg"
+                [name]="title()"
+                [seed]="chat()!.id"
+                [imageUrl]="chat()!.avatar_url"
+            />
+            <h3 class="profile-name">{{ title() }}</h3>
+
+            @if (isChannel()) {
+                <p class="profile-tag is-warn">
+                    <lucide-icon [img]="shieldOffIcon" />
+                    Signed · not encrypted
+                </p>
+            } @else if (memberSetVerified() === true) {
+                <p class="profile-tag is-ok">
+                    <lucide-icon [img]="shieldCheckIcon" />
+                    Member set matches the current key epoch
+                </p>
+            } @else if (memberSetVerified() === false) {
+                <p class="profile-tag is-danger">
+                    <lucide-icon [img]="shieldAlertIcon" />
+                    Member set does not match the key epoch
+                </p>
+            }
+        </section>
+
+        <!-- Highest severity in the app. Stated in terms of what it means, not as a generic error:
+             the recomputed member hash disagrees with the epoch commitment, so an extra device may
+             have been inserted that would read future messages. -->
+        @if (memberSetVerified() === false) {
+            <section
+                class="alarm"
+                role="alert"
+            >
+                <lucide-icon [img]="shieldAlertIcon" />
+                <div>
+                    <p class="alarm-title">The server may be lying to you</p>
+                    <p class="alarm-note">
+                        The member list below hashes to a different value than the one committed to this chat's current
+                        key epoch. A device may have been added without the members' knowledge, and it would be able to
+                        read messages sent from now on. This client will not distribute keys while that is true, so
+                        sending is blocked. Confirm the member list with the other participants by another channel
+                        before continuing.
+                    </p>
+                </div>
+            </section>
+        }
+
+        @if (isPrivate()) {
+            <section class="group">
+                <p class="section">Security</p>
+
+                @if (peerId()) {
+                    <a
+                        class="tile"
+                        [routerLink]="['/chats', chat()!.id, 'safety', peerId()!]"
+                    >
+                        <span class="tile-icon">
+                            <lucide-icon [img]="shieldIcon" />
+                        </span>
+                        <span class="tile-text">
+                            <span class="tile-title">Safety number</span>
+                            <span class="mono tile-sub">
+                                @if (safetyPreview().length) {
+                                    {{ safetyPreview().join(' ') }}…
+                                } @else {
+                                    Compare to confirm no key was substituted
+                                }
+                            </span>
+                        </span>
+                        <lucide-icon
+                            [img]="chevronRightIcon"
+                            class="tile-chevron"
+                        />
+                    </a>
+                }
+            </section>
+        }
+
+        <section class="group">
+            <p class="section">{{ isChannel() ? 'Subscribers' : 'Members' }} · {{ members().length }}</p>
+
+            <ul class="members">
+                @for (member of members(); track member.userId) {
+                    <li class="member">
+                        <app-avatar
+                            size="sm"
+                            [name]="member.name"
+                            [seed]="member.userId"
+                            [imageUrl]="member.avatarUrl"
+                        />
+
+                        <span class="member-text">
+                            <span class="member-line">
+                                <span
+                                    class="member-name"
+                                    [class.is-unresolved]="!member.resolved"
+                                    >{{ member.isMe ? 'You' : member.name }}</span
+                                >
+
+                                <!-- Published keys are a fact about the roster, not a claim that the
+                                     identity has been verified out of band. Those are different
+                                     things and the label says which one this is. -->
+                                @if (!isChannel()) {
+                                    @if (member.hasKeys) {
+                                        <span
+                                            class="pip is-ok"
+                                            title="Identity key published for this member"
+                                        >
+                                            <lucide-icon [img]="shieldCheckIcon" />
+                                        </span>
+                                    } @else {
+                                        <span
+                                            class="pip is-warn"
+                                            title="No identity key published — cannot receive encrypted messages"
+                                        >
+                                            <lucide-icon [img]="shieldAlertIcon" />
+                                        </span>
+                                    }
+                                }
+                            </span>
+                            <span class="member-sub">
+                                {{ member.role }}
+                                @if (member.username) {
+                                    · &#64;{{ member.username }}
+                                }
+                            </span>
+                        </span>
+
+                        @if (canManage() && !member.isMe && member.role !== 'owner') {
+                            <button
+                                type="button"
+                                class="member-action"
+                                [disabled]="busy()"
+                                [attr.aria-label]="'Remove ' + member.name"
+                                (click)="removeMember(member.userId)"
+                            >
+                                <lucide-icon [img]="userMinusIcon" />
+                            </button>
+                        }
+                    </li>
+                }
+            </ul>
+
+            @if (!isChannel() && membersWithoutKeys() > 0) {
+                <p class="warn-line">
+                    <lucide-icon [img]="shieldAlertIcon" />
+                    {{ membersWithoutKeys() }} member{{ membersWithoutKeys() === 1 ? ' has' : 's have' }} not published
+                    an identity key yet and cannot read encrypted messages.
+                </p>
+            }
+        </section>
+
+        <section class="group">
+            <div class="panel">
+                <button
+                    type="button"
+                    class="danger-row"
+                    [disabled]="busy()"
+                    (click)="leave()"
+                >
+                    <lucide-icon [img]="logOutIcon" />
+                    {{ isChannel() ? 'Unsubscribe from channel' : 'Leave chat' }}
+                </button>
+            </div>
+            @if (!isChannel()) {
+                <p class="muted small">
+                    Leaving rotates the group key, so nothing sent after you go will be readable with the key you hold.
+                </p>
+            }
+        </section>
+    }
+</div>
