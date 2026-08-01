@@ -6,9 +6,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { signChannelPost, verifyChannelPost } from '../crypto/channel';
 import { openMessage, sealMessage } from '../crypto/envelope';
 import { b64uDecode, fromUtf8, utf8 } from '../crypto/primitives';
-import { MessageResponse } from '../models/crypto.model';
+import { ChatKeys, MessageResponse } from '../models/crypto.model';
 import { ChatApiService } from './chat-api.service';
 import { CryptoApiService } from './crypto-api.service';
+import { isCryptoNotEnabled } from './crypto-errors';
 import { KeyStoreService } from './key-store.service';
 
 /** How a message rendered out — the UI needs to distinguish these, not just show text or nothing. */
@@ -121,12 +122,30 @@ export class MessageService {
      * message from a sender we have not seen would report no_key on first load.
      */
     async loadMessages(chatId: string, limit = 50, beforeId?: string): Promise<DecryptedMessage[]> {
-        const keys = await firstValueFrom(this.cryptoApi.getChatKeys(chatId));
-        await this.keyStore.ingestDistributions(chatId, keys.distributions);
+        // A chat need not have crypto settings at all: channels are signed rather than encrypted, and
+        // a private chat has none until encryption is enabled for it. Neither is an error — there are
+        // simply no grants to ingest, and `decrypt` reports anything it cannot open as `no_key`
+        // rather than pretending to have read it.
+        const keys = await this.tryGetChatKeys(chatId);
+        if (keys) {
+            await this.keyStore.ingestDistributions(chatId, keys.distributions);
+        }
 
         const raw = await firstValueFrom(this.chatApi.getMessages(chatId, limit, beforeId));
 
         return Promise.all(raw.map((message) => this.decrypt(chatId, message)));
+    }
+
+    /** Chat keys, or null when the chat has no crypto settings. Other failures still throw. */
+    private async tryGetChatKeys(chatId: string): Promise<ChatKeys | null> {
+        try {
+            return await firstValueFrom(this.cryptoApi.getChatKeys(chatId));
+        } catch (error) {
+            if (isCryptoNotEnabled(error)) {
+                return null;
+            }
+            throw error;
+        }
     }
 
     async decrypt(chatId: string, message: MessageResponse): Promise<DecryptedMessage> {

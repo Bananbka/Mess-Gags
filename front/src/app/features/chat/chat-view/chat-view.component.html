@@ -102,6 +102,18 @@
         </div>
     }
 
+    <!-- Readable, but nothing new can be sealed. Distinct from the member-set alarm: no one is
+         necessarily lying, the chat simply exceeds what sender-key distribution can carry. -->
+    @if (encryptionUnavailable(); as reason) {
+        <p
+            class="channel-notice"
+            role="status"
+        >
+            <lucide-icon [img]="shieldOffIcon" />
+            {{ reason }} Existing messages are unaffected, but you cannot send here.
+        </p>
+    }
+
     @if (showChannelNotice()) {
         <p class="channel-notice">
             <lucide-icon [img]="shieldOffIcon" />
@@ -240,9 +252,7 @@
 
     <app-composer
         [canSend]="canSend()"
-        [blockedReason]="
-            memberVerificationError() ? 'Blocked: the member set for this chat could not be verified.' : null
-        "
+        [blockedReason]="sendBlockedReason()"
         [rekeying]="isRekeying()"
         [placeholder]="isChannel() ? 'Post to channel…' : 'Message…'"
         (submitted)="send($event)"

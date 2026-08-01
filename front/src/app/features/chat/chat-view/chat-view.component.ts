@@ -56,6 +56,8 @@ export class ChatViewComponent implements AfterViewChecked {
     readonly isRekeying = this.store.isRekeying;
     readonly canSend = this.store.canSend;
     readonly memberVerificationError = this.store.memberVerificationError;
+    readonly encryptionUnavailable = this.store.encryptionUnavailable;
+    readonly sendBlockedReason = this.store.sendBlockedReason;
 
     readonly bannerDismissed = signal(false);
 

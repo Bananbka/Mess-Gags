@@ -6,6 +6,7 @@ import { Chat } from '../models/chat.model';
 import { ChatKeys, MessageResponse } from '../models/crypto.model';
 import { ChatApiService } from './chat-api.service';
 import { CryptoApiService } from './crypto-api.service';
+import { isAlreadyEnabled, isCryptoNotEnabled, isEncryptionRefused } from './crypto-errors';
 import { DirectoryService } from './directory.service';
 import { DecryptedMessage, MessageService } from './message.service';
 import { SessionService } from './session.service';
@@ -77,6 +78,16 @@ export class ChatStoreService {
      */
     readonly memberVerificationError = signal<string | null>(null);
 
+    /**
+     * Encryption could not be enabled for this chat — the group exceeds the member ceiling that
+     * sender-key distribution can carry, or the server refused for another permanent reason.
+     *
+     * Its own state rather than a generic error: the chat is readable and its history is intact, but
+     * nothing new can be sealed. Sending is blocked instead of falling back to plaintext, because a
+     * chat the user believes is encrypted must never quietly stop being so.
+     */
+    readonly encryptionUnavailable = signal<string | null>(null);
+
     /** A new epoch opened — membership changed and chains are being re-minted. Transient. */
     readonly isRekeying = signal(false);
 
@@ -85,8 +96,22 @@ export class ChatStoreService {
 
     readonly isOnline = this.ws.isConnected;
 
-    /** Sending is impossible while the member set is in doubt — refusing is the whole point. */
-    readonly canSend = computed(() => this.memberVerificationError() === null);
+    /**
+     * Sending is impossible while the member set is in doubt, or while there is no key to seal with.
+     * Refusing in both cases is the whole point.
+     */
+    readonly canSend = computed(() => this.memberVerificationError() === null && this.encryptionUnavailable() === null);
+
+    /** Why sending is blocked, if it is. Ordered by severity. */
+    readonly sendBlockedReason = computed<string | null>(() => {
+        if (this.memberVerificationError()) {
+            return 'Blocked: the member set for this chat could not be verified.';
+        }
+        if (this.encryptionUnavailable()) {
+            return this.encryptionUnavailable();
+        }
+        return null;
+    });
 
     /**
      * Previews for chats we have opened this session, keyed by chat id.
@@ -236,6 +261,7 @@ export class ChatStoreService {
         this.messages.set([]);
         this.pending.set([]);
         this.chatKeys.set(null);
+        this.encryptionUnavailable.set(null);
         this.memberVerificationError.set(null);
         this.typingUserIds.set([]);
         this.hasMoreHistory.set(false);
@@ -246,9 +272,13 @@ export class ChatStoreService {
         this.messagesLoading.set(true);
 
         try {
-            // Fetched before the history so the roster and grants are in place; otherwise every
-            // message from a sender we have not ingested yet would report no_key on first paint.
-            this.chatKeys.set(await firstValueFrom(this.cryptoApi.getChatKeys(chatId)));
+            // Channels are signed rather than encrypted, so they have no epochs, no roster and no
+            // grants. Asking for their keys always 404s.
+            if (!(await this.isChannel(chatId))) {
+                // Fetched before the history so the roster and grants are in place; otherwise every
+                // message from a sender we have not ingested yet would report no_key on first paint.
+                this.chatKeys.set(await this.ensureEncryptionEnabled(chatId));
+            }
 
             const decrypted = await this.messages_.loadMessages(chatId, PAGE_SIZE);
             this.messages.set(decrypted);
@@ -261,6 +291,60 @@ export class ChatStoreService {
         } finally {
             this.messagesLoading.set(false);
         }
+    }
+
+    /**
+     * Is this a channel? Answered from the loaded list, falling back to a fetch on a deep link.
+     *
+     * Worth a round trip when the list has not arrived yet: the answer decides whether this chat is
+     * supposed to be encrypted at all, and guessing wrong either hides a real problem or invents one.
+     */
+    private async isChannel(chatId: string): Promise<boolean> {
+        const known = this.chats().find((c) => c.id === chatId);
+        if (known) {
+            return known.chat_type === 'channel';
+        }
+
+        try {
+            return (await firstValueFrom(this.chatApi.getChat(chatId))).chat_type === 'channel';
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Fetch the chat's keys, turning encryption on first if it has never been enabled.
+     *
+     * `POST /chats/private` and `POST /chats/group` do not create a `ChatCryptoSettings` row, so a
+     * brand-new chat has no epoch and `GET .../keys` answers 404 CRYPTO_NOT_ENABLED. Enabling on
+     * first open is what makes a private chat encrypted from its first message without requiring the
+     * creator to have done anything special.
+     *
+     * A refusal — too many members — is recorded rather than swallowed. Sending stays blocked, which
+     * is correct: quietly falling back to plaintext in a chat the user believes is encrypted is the
+     * worst outcome available.
+     */
+    private async ensureEncryptionEnabled(chatId: string): Promise<ChatKeys | null> {
+        try {
+            return await firstValueFrom(this.cryptoApi.getChatKeys(chatId));
+        } catch (error) {
+            if (!isCryptoNotEnabled(error)) {
+                throw error;
+            }
+        }
+
+        try {
+            await firstValueFrom(this.cryptoApi.enableEncryption(chatId));
+        } catch (error) {
+            // A race with another device is fine — the row we wanted now exists either way.
+            if (!isAlreadyEnabled(error)) {
+                const refusal = isEncryptionRefused(error);
+                this.encryptionUnavailable.set(refusal ?? 'Could not enable encryption for this chat.');
+                return null;
+            }
+        }
+
+        return firstValueFrom(this.cryptoApi.getChatKeys(chatId));
     }
 
     /** Page backwards. ObjectId monotonicity is the ordering key, so the oldest id is the cursor. */

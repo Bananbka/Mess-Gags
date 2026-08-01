@@ -8,6 +8,7 @@ import { UserSearchResult } from '../../../core/models/chat.model';
 import { ChatApiService } from '../../../core/services/chat-api.service';
 import { ChatStoreService } from '../../../core/services/chat-store.service';
 import { CryptoApiService } from '../../../core/services/crypto-api.service';
+import { isEncryptionRefused } from '../../../core/services/crypto-errors';
 import { DirectoryService } from '../../../core/services/directory.service';
 import { applyServerErrors, errorTextFor } from '../../../shared/forms/server-errors';
 import { AvatarComponent } from '../../../shared/ui/avatar/avatar.component';
@@ -119,9 +120,15 @@ export class CreateGroupComponent {
 
             try {
                 await firstValueFrom(this.cryptoApi.enableEncryption(chat.id));
-            } catch {
-                // The group exists either way; say so rather than stranding the user on this screen.
-                this.error.set('The group was created, but encryption could not be enabled. Open it and retry.');
+            } catch (enableError) {
+                // The group exists either way, so report the reason instead of stranding the user
+                // here. A refusal is permanent and worth quoting; anything else the store retries
+                // when the chat is opened.
+                const refusal = isEncryptionRefused(enableError);
+                if (refusal) {
+                    this.error.set(`The group was created, but ${refusal.charAt(0).toLowerCase()}${refusal.slice(1)}`);
+                    return;
+                }
             }
 
             await this.store.loadChats();
