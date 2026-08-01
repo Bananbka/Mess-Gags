@@ -20,7 +20,16 @@ celery_app.conf.beat_schedule = {
     'cleanup-minio-task': {
         'task': 'app.domains.files.tasks.cleanup_minio_orphans_task',
         'schedule': crontab(hour=3, minute=0),
-    }
+    },
+    'rotate-stale-epochs': {
+        'task': 'app.domains.crypto.tasks.rotate_stale_epochs_task',
+        'schedule': crontab(hour=4, minute=0),
+    },
+    'prune-delivered-grants': {
+        'task': 'app.domains.crypto.tasks.prune_delivered_grants_task',
+        'schedule': crontab(hour=4, minute=30),
+    },
 }
 
-celery_app.autodiscover_tasks(['app.domains.users', 'app.domains.files'])
+# Tasks in a domain not listed here are silently never registered.
+celery_app.autodiscover_tasks(['app.domains.users', 'app.domains.files', 'app.domains.crypto'])
