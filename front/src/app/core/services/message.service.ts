@@ -145,11 +145,23 @@ export class MessageService {
             await this.keyStore.ingestDistributions(chatId, keys.distributions);
         }
 
-        const raw = await firstValueFrom(this.chatApi.getMessages(chatId, limit, beforeId));
+        // `GET /chats/{id}/messages` sorts by _id descending, because "the latest N" is only
+        // expressible that way with a limit. Reverse into chronological order here: the ratchet is
+        // ordered, so decrypting newest-first walks a receiver chain backwards and every message
+        // after the first reports a consumed index. Rendering and back-pagination both want
+        // ascending order too.
+        const raw = (await firstValueFrom(this.chatApi.getMessages(chatId, limit, beforeId))).slice().reverse();
 
         // The ciphertext is handed back too. A message that decrypts to no_key today may be
         // decryptable in a second, and re-running it needs the envelope, not another round trip.
-        return { raw, messages: await Promise.all(raw.map((message) => this.decrypt(chatId, message))) };
+        const messages: DecryptedMessage[] = [];
+        for (const message of raw) {
+            // Sequential, not Promise.all: concurrent decryption of one sender's chain interleaves
+            // the ratchet's index advances.
+            messages.push(await this.decrypt(chatId, message));
+        }
+
+        return { raw, messages };
     }
 
     /**
@@ -210,6 +222,31 @@ export class MessageService {
     /** Drop retained plaintext. Called when the key store closes; holding it open would outlive it. */
     forgetOpened(): void {
         this.opened.clear();
+    }
+
+    /**
+     * Record a message we just sent, using the plaintext we already have.
+     *
+     * Our own message must never be run through `decrypt`. We seal with a `SenderChain` and would
+     * have to open with a separate `ReceiverChain` built from the grant we wrapped for ourselves —
+     * consuming an index there for no reason, and reporting `no_key` in the window before that grant
+     * has been fetched back. Both are avoidable: the plaintext never left this process.
+     */
+    recordOutgoing(sent: MessageResponse, plaintext: string): DecryptedMessage {
+        const message: DecryptedMessage = {
+            id: sent._id,
+            chatId: sent.chat_id,
+            senderId: sent.sender_id,
+            createdAt: sent.created_at,
+            isEdited: sent.is_edited,
+            text: plaintext,
+            status: sent.content_format === 'channel_signed_v1' ? 'plaintext' : 'ok',
+            // We signed it ourselves, so authorship is known rather than merely checked.
+            senderVerified: true,
+        };
+
+        this.opened.set(sent._id, message);
+        return message;
     }
 
     private async decryptOnce(chatId: string, message: MessageResponse): Promise<DecryptedMessage> {

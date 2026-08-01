@@ -449,7 +449,8 @@ export class ChatStoreService {
                     : await this.messages_.sendText(chatId, text);
 
             this.pending.update((p) => p.filter((item) => item.localId !== localId));
-            this.appendDecrypted(await this.messages_.decrypt(chatId, sent));
+            this.rawMessages.set(sent._id, sent);
+            this.appendDecrypted(this.messages_.recordOutgoing(sent, text));
             this.bumpChatPreview(chatId, sent);
         } catch (error) {
             if (this.isMemberVerificationFailure(error)) {
@@ -540,7 +541,13 @@ export class ChatStoreService {
 
     /** Re-run decryption for messages we could not open, using ciphertext we already hold. */
     private async redecryptUnreadable(chatId: string): Promise<void> {
-        const stuck = this.messages().filter((m) => m.status === 'no_key' || m.status === 'failed');
+        // Oldest first. A receiver chain only moves forward, so retrying out of order would consume a
+        // later index and make every earlier message permanently unopenable. Message ids are
+        // ObjectIds, which sort chronologically — the same ordering key the backend paginates on.
+        const stuck = this.messages()
+            .filter((m) => m.status === 'no_key' || m.status === 'failed')
+            .sort((a, b) => a.id.localeCompare(b.id));
+
         if (stuck.length === 0) {
             return;
         }
