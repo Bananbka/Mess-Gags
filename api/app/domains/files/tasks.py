@@ -27,11 +27,13 @@ async def cleanup_minio_orphans():
 
     print(f"MINIO GARBAGE COLLECTOR: FOUND {len(active_keys)} ACTIVE KEYS")
 
+    bucket_name = settings.MINIO_MESSAGE_BUCKET
+
     deleted_count = 0
     async with minio_manager.get_client() as client:
         paginator = client.get_paginator('list_objects_v2')
 
-        async for page in paginator.paginate(Bucket=minio_manager.bucket_name):
+        async for page in paginator.paginate(Bucket=bucket_name):
             if 'Contents' not in page:
                 continue
 
@@ -44,7 +46,7 @@ async def cleanup_minio_orphans():
                 if age > timedelta(hours=24):
                     if key not in active_keys:
                         print(f"MINIO GARBAGE COLLECTOR: DELETING ORPHAN {key}")
-                        await client.delete_object(Bucket=minio_manager.bucket_name, Key=key)
+                        await client.delete_object(Bucket=bucket_name, Key=key)
                         deleted_count += 1
 
     mongo_client.close()
