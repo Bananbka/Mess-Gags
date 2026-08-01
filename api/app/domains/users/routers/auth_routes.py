@@ -11,6 +11,7 @@ from app.core.exceptions import AppException
 from app.core.responses import SuccessResponse
 from app.core.security import create_access_token, verify_password, create_refresh_token, set_token_cookie, \
     delete_token_cookies, get_password_hash
+from app.domains.crypto.services import identity_service
 from app.domains.users.dependencies import get_current_user, get_current_unverified_user
 from app.domains.users.models.user import User
 from app.domains.users.schemas.user_schemas import UserCreate, UserLogin, UserResponse, PasswordForgot, PasswordReset, \
@@ -169,6 +170,12 @@ async def reset_password(
     user.public_key = user_data.new_public_key
     user.encrypted_private_key = user_data.new_encrypted_private_key
 
+    # A forgotten password means the Argon2id-wrapped bundle is unrecoverable, so the identity
+    # dies with it. Revoke every device rather than leaving keys that nobody can ever unwrap;
+    # the client must publish a fresh identity after logging back in. All pre-reset history is
+    # permanently unreadable — that is inherent to E2E, and the UI must say so plainly.
+    await identity_service.deactivate_user_devices(db, user.id)
+
     await db.commit()
 
     await redis.setex(f"force_logout:{user.id}", 604800, int(time.time()))
@@ -188,12 +195,22 @@ async def change_password(
         raise AppException(401, "INVALID_PASSWORD", "Invalid password.")
 
     current_user.hashed_password = get_password_hash(user_data.new_password)
-    current_user.encrypted_private_key = user_data.new_encrypted_private_key
+
+    # Keep the identity keypair — only its wrapping changes. Re-wrapping and the password update
+    # share one transaction, so we can never end up with a new password and a bundle still
+    # wrapped under the old one (which would lock the user out of their own history).
+    if user_data.new_encrypted_private_key is not None:
+        current_user.encrypted_private_key = user_data.new_encrypted_private_key
+
+    if user_data.rewrapped_identities:
+        await identity_service.rewrap_private_bundles(
+            db, current_user.id, user_data.rewrapped_identities
+        )
 
     await db.commit()
 
     logout_time = int(time.time())
-    await redis.setex(f"force_logout:{logout_time}", 604800, logout_time)
+    await redis.setex(f"force_logout:{current_user.id}", 604800, logout_time)
 
     new_access_token = create_access_token(data={"sub": str(current_user.id)})
     new_refresh_token = create_refresh_token(data={"sub": str(current_user.id)})

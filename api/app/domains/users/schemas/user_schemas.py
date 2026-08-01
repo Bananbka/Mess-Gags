@@ -4,6 +4,8 @@ import uuid
 import phonenumbers
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_validator
 
+from app.domains.crypto.schemas.crypto_schemas import RewrappedIdentity
+
 
 class UserCreate(BaseModel):
     full_name: str = Field(..., min_length=1, max_length=30)
@@ -83,9 +85,19 @@ class PasswordReset(BaseModel):
 
 
 class PasswordChange(BaseModel):
+    """Change password while KEEPING the identity keypair.
+
+    The client re-derives its wrapping key from the new password and re-wraps the same private
+    bundle. Nothing about the identity changes, so history stays readable. Contrast PasswordReset,
+    where the bundle is unrecoverable and the identity necessarily dies with it.
+    """
     old_password: str
     new_password: str = Field(..., min_length=8, max_length=72)
-    new_encrypted_private_key: str
+
+    # Legacy RSA bundle. Optional during the transition to X25519/Ed25519.
+    new_encrypted_private_key: str | None = None
+    # New-world equivalent: same keypair, re-wrapped under the new password.
+    rewrapped_identities: list[RewrappedIdentity] | None = None
 
 
 class EmailVerification(BaseModel):
