@@ -1,5 +1,4 @@
-﻿import asyncio
-import uuid
+﻿import uuid
 from datetime import datetime, timezone
 
 from bson import ObjectId
@@ -11,7 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.exceptions import AppException
 from app.domains.chats.models import ChatParticipant, Chat, ChatType
-from app.domains.messages.schemas.messages_schemas import MessageCreateRequest, MessageDocument, MessageResponse
+from app.domains.messages.schemas.messages_schemas import (
+    ContentFormat,
+    MessageCreateRequest,
+    MessageDocument,
+    MessageResponse,
+    MessageUpdateRequest,
+)
 from app.infrastructure.minio import minio_manager
 
 
@@ -83,6 +88,26 @@ async def get_and_validate_message(db: AsyncSession, collection, msg_id: str, us
     return msg
 
 
+def resolve_content_format(doc: dict, chat: Chat) -> ContentFormat:
+    """Classify a stored document.
+
+    Documents written before the envelope existed have no content_format, so it is inferred once
+    here rather than recomputed inconsistently at each call site.
+    """
+    stored = doc.get("content_format")
+    if stored:
+        return ContentFormat(stored)
+
+    if doc.get("envelope"):
+        return ContentFormat.SENDER_KEYS_V1
+
+    return (
+        ContentFormat.LEGACY_RSA
+        if chat.chat_type == ChatType.PRIVATE
+        else ContentFormat.LEGACY_PLAINTEXT
+    )
+
+
 async def send_message(
         db: AsyncSession,
         mongo_db: AsyncIOMotorDatabase,
@@ -91,21 +116,30 @@ async def send_message(
 ) -> MessageResponse:
     chat = await get_chat_or_403(db, message_in.chat_id, user_id)
 
-    message_dict = {
-        "created_at": datetime.now(timezone.utc),
-        "sender_id": user_id,
-        "is_encrypted": chat.chat_type == ChatType.PRIVATE,
-        **message_in.model_dump(),
-    }
-    new_message = MessageDocument(**message_dict)
+    if message_in.envelope is not None:
+        content_format = ContentFormat.SENDER_KEYS_V1
+    elif chat.chat_type == ChatType.PRIVATE:
+        content_format = ContentFormat.LEGACY_RSA
+    else:
+        content_format = ContentFormat.LEGACY_PLAINTEXT
 
-    message_dict = new_message.model_dump()
+    new_message = MessageDocument(
+        **message_in.model_dump(),
+        sender_id=user_id,
+        content_format=content_format,
+        created_at=datetime.now(timezone.utc),
+    )
+
+    # mode="json" so the envelope's UUID and enum members serialise to BSON-safe primitives.
+    message_dict = new_message.model_dump(mode="json")
+    message_dict["chat_id"] = new_message.chat_id
+    message_dict["sender_id"] = new_message.sender_id
+    message_dict["created_at"] = new_message.created_at
 
     collection = mongo_db["messages"]
-    res = await collection.insert_one(message_dict)
+    res = await collection.insert_one(dict(message_dict))
 
     message_dict["_id"] = str(res.inserted_id)
-
     return MessageResponse(**message_dict)
 
 
@@ -137,7 +171,7 @@ async def get_chat_messages(
     res = []
     for msg in messages:
         msg["_id"] = str(msg["_id"])
-        msg["is_encrypted"] = chat.chat_type == ChatType.PRIVATE
+        msg["content_format"] = resolve_content_format(msg, chat)
         res.append(MessageResponse(**msg))
 
     return res
@@ -148,7 +182,7 @@ async def update_message(
         mongo_db: AsyncIOMotorDatabase,
         user_id: uuid.UUID,
         msg_id: str,
-        encrypted_content: str
+        message_in: MessageUpdateRequest,
 ) -> MessageResponse:
     collection = mongo_db["messages"]
 
@@ -158,17 +192,30 @@ async def update_message(
     chat_id = msg.get("chat_id")
     chat = await get_chat_or_403(db, chat_id, user_id)
 
-    await collection.update_one(
-        {"_id": obj_id},
-        {"$set": {"encrypted_content": encrypted_content, "is_edited": True}}
-    )
+    if message_in.envelope is not None:
+        existing = msg.get("envelope")
+        if existing and message_in.envelope.idx <= existing.get("idx", -1):
+            raise AppException(
+                400, "CHAIN_INDEX_REUSED",
+                "An edit must use a fresh chain index; reusing one would repeat a message key.",
+            )
+
+        update = {
+            "envelope": message_in.envelope.model_dump(mode="json"),
+            "encrypted_content": None,
+            "content_format": ContentFormat.SENDER_KEYS_V1.value,
+            "is_edited": True,
+        }
+    else:
+        update = {"encrypted_content": message_in.encrypted_content, "is_edited": True}
+
+    await collection.update_one({"_id": obj_id}, {"$set": update})
 
     upd_msg = await collection.find_one({"_id": obj_id})
     upd_msg["_id"] = str(obj_id)
-    upd_msg["is_encrypted"] = chat.chat_type == ChatType.PRIVATE
-    return MessageResponse(
-        **upd_msg
-    )
+    upd_msg["content_format"] = resolve_content_format(upd_msg, chat)
+
+    return MessageResponse(**upd_msg)
 
 
 async def delete_message(
@@ -180,13 +227,22 @@ async def delete_message(
     collection = mongo_db["messages"]
     msg = await get_and_validate_message(db, collection, msg_id, user_id)
 
-    attachments = msg.get("attachments", [])
-    for attachment in attachments:
-        file_url = attachment.get("url")
-        if file_url:
-            asyncio.create_task(minio_manager.delete_file(file_url, settings.MINIO_MESSAGE_BUCKET))
-
     await collection.delete_one({"_id": msg["_id"]})
+
+    # Only reap a blob once no surviving message references it. A user can name any url in their
+    # own message's attachments, so deleting purely on the strength of this document would let
+    # them destroy other users' files.
+    for attachment in msg.get("attachments") or []:
+        file_url = attachment.get("url")
+        if not file_url:
+            continue
+
+        still_referenced = await collection.find_one({"attachments.url": file_url}, {"_id": 1})
+        if still_referenced:
+            continue
+
+        await minio_manager.delete_file(file_url, settings.MINIO_MESSAGE_BUCKET)
+
     return msg["chat_id"]
 
 

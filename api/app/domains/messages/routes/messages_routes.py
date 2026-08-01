@@ -49,7 +49,7 @@ async def edit_message(
         db: AsyncSession = Depends(get_db), mongo_db: AsyncIOMotorDatabase = Depends(get_mongo_db),
         redis: Redis = Depends(get_redis)
 ):
-    upd_msg = await messages_service.update_message(db, mongo_db, user.id, message_id, message_in.encrypted_content)
+    upd_msg = await messages_service.update_message(db, mongo_db, user.id, message_id, message_in)
 
     participant_ids = await get_chat_participants_ids(db, upd_msg.chat_id)
     ws_envelope = WSMessageEnvelope(
