@@ -11,8 +11,11 @@ from app.core.config import settings
 from app.infrastructure.postgres import Base
 
 # MODELS
+# Every model package must be imported here or autogenerate will not see the tables and will
+# emit a migration that drops them.
 from app.domains.users.models import *
 from app.domains.chats.models import *
+from app.domains.crypto.models import *
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
