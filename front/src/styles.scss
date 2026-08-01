@@ -111,6 +111,35 @@ a {
     background-clip: content-box;
 }
 
+/**
+ * Icon sizing.
+ *
+ * `lucide-icon` is a plain element wrapping an `<svg>` that carries its own width/height attributes
+ * (24px by default). Sizing only the host therefore leaves the svg at its intrinsic size, so it
+ * overflows a smaller box and appears shoved to one corner. The svg has to be told to fill its host,
+ * and the host has to be a flex box for it to fill.
+ *
+ * Global rather than per-component: component styles are scoped, and `lucide-icon` renders its svg
+ * as a child of the component that uses it, so every one of them would otherwise need this.
+ */
+lucide-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    line-height: 0;
+    /* A predictable default for any icon a component does not size itself. Component rules win on
+       specificity, since scoping adds an attribute selector. */
+    width: 1.25rem;
+    height: 1.25rem;
+
+    svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+}
+
 .mono {
     font-family: var(--font-mono);
 }

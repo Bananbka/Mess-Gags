@@ -37,3 +37,13 @@ export function isEncryptionRefused(error: unknown): string | null {
     const message = (error as HttpErrorResponse).error?.message;
     return typeof message === 'string' ? message : 'Encryption cannot be enabled for this chat.';
 }
+
+/**
+ * We may not enable encryption here — a group whose owner has not turned it on.
+ *
+ * Worth its own state rather than a generic failure: nothing is broken and the user has nothing to
+ * fix. Reporting it as an error would make an ordinary permission boundary look like a fault.
+ */
+export function isEnableForbidden(error: unknown): boolean {
+    return error instanceof HttpErrorResponse && error.status === 403 && errorCode(error) === 'ACCESS_DENIED';
+}

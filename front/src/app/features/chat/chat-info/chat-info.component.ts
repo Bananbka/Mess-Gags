@@ -80,12 +80,33 @@ export class ChatInfoComponent {
     readonly isPrivate = computed(() => this.chat()?.chat_type === 'private');
     readonly isChannel = computed(() => this.chat()?.chat_type === 'channel');
 
+    /**
+     * The name to show for this chat.
+     *
+     * `GET /chats/{id}` returns the raw `Chat.title` column, which is NULL for every private chat —
+     * the counterpart's name is only computed by the list endpoint's `enrich_chats_with_mongo_data`.
+     * So for a private chat the title comes from the other participant instead, which is what the
+     * user actually thinks of as the chat's name.
+     */
     readonly title = computed(() => {
         const chat = this.chat();
         if (!chat) {
             return '';
         }
-        return chat.title ?? (chat.chat_type === 'channel' ? 'Channel' : 'Untitled chat');
+
+        if (chat.chat_type === 'private') {
+            // The chat list *does* carry the resolved counterpart name, so prefer it and fall back
+            // to the directory only when this screen was opened without the list loaded.
+            const fromList = this.store.chats().find((c) => c.id === chat.id)?.title;
+            if (fromList) {
+                return fromList;
+            }
+
+            const peer = chat.participants.find((p) => p.user_id !== this.session.user()?.id);
+            return peer ? this.directory.lookup(peer.user_id).name : 'Private chat';
+        }
+
+        return chat.title ?? (chat.chat_type === 'channel' ? 'Channel' : 'Untitled group');
     });
 
     readonly members = computed<MemberRow[]>(() => {
@@ -146,6 +167,18 @@ export class ChatInfoComponent {
             // returns plain dicts with no participants key at all.
             const chat = await firstValueFrom(this.chatApi.getChat(chatId));
             this.chat.set(chat);
+
+            // The two endpoints hold complementary halves of the same fact: the list has the
+            // counterpart's resolved name but no participants, the detail has participants but a NULL
+            // title. Pairing them here teaches the directory a name it could not otherwise learn,
+            // which is what stops DM messages rendering as "Member 1a2b3c4d".
+            if (chat.chat_type === 'private') {
+                const peer = chat.participants.find((p) => p.user_id !== this.session.user()?.id);
+                const listTitle = this.store.chats().find((c) => c.id === chatId)?.title ?? null;
+                if (peer) {
+                    this.directory.rememberPrivateChatPeer(peer.user_id, listTitle, chat.avatar_url);
+                }
+            }
 
             if (chat.chat_type !== 'channel') {
                 try {

@@ -6,7 +6,7 @@ import { Chat } from '../models/chat.model';
 import { ChatKeys, MessageResponse } from '../models/crypto.model';
 import { ChatApiService } from './chat-api.service';
 import { CryptoApiService } from './crypto-api.service';
-import { isAlreadyEnabled, isCryptoNotEnabled, isEncryptionRefused } from './crypto-errors';
+import { isAlreadyEnabled, isCryptoNotEnabled, isEnableForbidden, isEncryptionRefused } from './crypto-errors';
 import { DirectoryService } from './directory.service';
 import { DecryptedMessage, MessageService } from './message.service';
 import { SessionService } from './session.service';
@@ -272,9 +272,11 @@ export class ChatStoreService {
         this.messagesLoading.set(true);
 
         try {
+            const chat = await this.hydrateChat(chatId);
+
             // Channels are signed rather than encrypted, so they have no epochs, no roster and no
             // grants. Asking for their keys always 404s.
-            if (!(await this.isChannel(chatId))) {
+            if (chat?.chat_type !== 'channel') {
                 // Fetched before the history so the roster and grants are in place; otherwise every
                 // message from a sender we have not ingested yet would report no_key on first paint.
                 this.chatKeys.set(await this.ensureEncryptionEnabled(chatId));
@@ -294,21 +296,40 @@ export class ChatStoreService {
     }
 
     /**
-     * Is this a channel? Answered from the loaded list, falling back to a fetch on a deep link.
+     * Fill in the parts of a chat that only `GET /chats/{id}` returns, and merge them into the list.
      *
-     * Worth a round trip when the list has not arrived yet: the answer decides whether this chat is
-     * supposed to be encrypted at all, and guessing wrong either hides a real problem or invents one.
+     * The two endpoints are complementary and neither is sufficient alone. The list computes a
+     * display title for private chats but returns `participants: []`, because
+     * `enrich_chats_with_mongo_data` builds plain dicts with no participants key and Pydantic falls
+     * back to the field default. The detail endpoint has the real roster but a NULL title.
+     *
+     * Without the merge there is no counterpart id for a private chat, so the safety number — the
+     * only defence against a substituted key — would have nothing to point at.
      */
-    private async isChannel(chatId: string): Promise<boolean> {
-        const known = this.chats().find((c) => c.id === chatId);
-        if (known) {
-            return known.chat_type === 'channel';
-        }
-
+    private async hydrateChat(chatId: string): Promise<Chat | null> {
         try {
-            return (await firstValueFrom(this.chatApi.getChat(chatId))).chat_type === 'channel';
+            const detail = await firstValueFrom(this.chatApi.getChat(chatId));
+
+            this.chats.update((list) => {
+                const index = list.findIndex((c) => c.id === chatId);
+                if (index < 0) {
+                    return [...list, detail];
+                }
+
+                // The list's title wins: it is the resolved counterpart name, and the detail's is null.
+                const merged: Chat = {
+                    ...detail,
+                    title: list[index].title ?? detail.title,
+                    unread_count: list[index].unread_count,
+                    last_message: list[index].last_message ?? detail.last_message,
+                };
+                return [...list.slice(0, index), merged, ...list.slice(index + 1)];
+            });
+
+            this.warmDirectoryFromChats(this.chats());
+            return this.chats().find((c) => c.id === chatId) ?? detail;
         } catch {
-            return false;
+            return this.chats().find((c) => c.id === chatId) ?? null;
         }
     }
 
@@ -337,11 +358,21 @@ export class ChatStoreService {
             await firstValueFrom(this.cryptoApi.enableEncryption(chatId));
         } catch (error) {
             // A race with another device is fine — the row we wanted now exists either way.
-            if (!isAlreadyEnabled(error)) {
-                const refusal = isEncryptionRefused(error);
-                this.encryptionUnavailable.set(refusal ?? 'Could not enable encryption for this chat.');
+            if (isAlreadyEnabled(error)) {
+                return firstValueFrom(this.cryptoApi.getChatKeys(chatId));
+            }
+
+            if (isEnableForbidden(error)) {
+                // A group whose owner has not switched encryption on. Not our failure to report as
+                // one: there is nothing here for this user to fix.
+                this.encryptionUnavailable.set(
+                    'Encryption has not been enabled for this chat. Only its owner can turn it on.'
+                );
                 return null;
             }
+
+            this.encryptionUnavailable.set(isEncryptionRefused(error) ?? 'Could not enable encryption for this chat.');
+            return null;
         }
 
         return firstValueFrom(this.cryptoApi.getChatKeys(chatId));

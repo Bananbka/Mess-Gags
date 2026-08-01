@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppException
 from app.core.responses import SuccessResponse
-from app.domains.chats.models import ParticipantRole
+from app.domains.chats.models import ChatType, ParticipantRole
 from app.domains.chats.services import chat_services
 from app.domains.crypto.reference.grants import compute_member_set_hash
 from app.domains.crypto.schemas.crypto_schemas import (
@@ -82,17 +82,27 @@ async def enable_chat_encryption(
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
 ):
-    """Enable end-to-end encryption and open the chat's first epoch. Owner only."""
+    """Enable end-to-end encryption and open the chat's first epoch.
+
+    Group chats are owner-only: turning encryption on commits every member to a key epoch, which is
+    a decision for whoever administers the group.
+
+    Private chats are the exception, and must be, because `get_or_create_private_chat` gives both
+    participants MEMBER and no OWNER at all. An owner-only rule therefore made private chats
+    permanently unencryptable — the exact opposite of the design, where PRIVATE is the one chat type
+    that is genuinely end-to-end. There is no hierarchy in a two-party chat, so either side may
+    enable it, and either side doing so is the outcome both want.
+    """
     participant = await messages_service.is_user_in_chat(db, user.id, chat_id)
     if participant is None:
         raise AppException(403, "ACCESS_DENIED", "You are not a participant of this chat.")
 
-    if participant.role is not ParticipantRole.OWNER:
-        raise AppException(403, "ACCESS_DENIED", "Only the owner can enable encryption.")
-
     chat = await chat_services.get_chat_by_id(db, chat_id)
     if chat is None:
         raise AppException(404, "NOT_FOUND", "Chat doesn't exist.")
+
+    if chat.chat_type is not ChatType.PRIVATE and participant.role is not ParticipantRole.OWNER:
+        raise AppException(403, "ACCESS_DENIED", "Only the owner can enable encryption.")
 
     epoch = await epoch_service.enable_encryption(db, chat, user.id)
     return SuccessResponse(data=epoch)
