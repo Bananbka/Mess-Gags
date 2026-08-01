@@ -122,6 +122,25 @@ def test_safety_number_is_symmetric_and_stable():
     assert all(len(g) == 5 and g.isdigit() for g in groups)
 
 
+def test_safety_number_groups_all_carry_entropy():
+    """Regression: the digest must be long enough to fill all 12 groups.
+
+    SHA-256 yields 32 bytes but 12 groups consume 48, and Python slices past the end silently, so
+    the last four groups were always "00000" — displaying 60 digits while carrying 40 digits of
+    entropy. Caught by the TypeScript client, where DataView raises instead of returning empty.
+    """
+    seen_per_position = [set() for _ in range(12)]
+
+    for i in range(24):
+        a = generate_identity(USER_A, DEVICE_A)
+        b = generate_identity(USER_B, DEVICE_B)
+        for position, group in enumerate(safety_number(a.signing_public, b.signing_public).split(" ")):
+            seen_per_position[position].add(group)
+
+    for position, values in enumerate(seen_per_position):
+        assert len(values) > 1, f"group {position + 1} is constant across samples: {values}"
+
+
 def test_safety_number_changes_when_a_key_changes():
     """This is what makes a malicious key substitution visible to users."""
     a = generate_identity(USER_A, DEVICE_A)

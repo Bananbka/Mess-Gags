@@ -27,7 +27,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.hashes import SHA256, Hash
+from cryptography.hazmat.primitives.hashes import SHA512, Hash
 
 from app.domains.crypto.reference.primitives import (
     DS_FINGERPRINT,
@@ -189,10 +189,15 @@ def safety_number(signing_public_a: bytes, signing_public_b: bytes) -> str:
     Inputs are sorted so both sides compute the same value regardless of who is 'A'. This is the
     only defence against a malicious server substituting a public key, so it must be surfaced in
     the UI and must visibly change when a peer's key changes.
+
+    SHA-512 rather than SHA-256 because 12 groups consume 48 bytes: a 32-byte digest cannot fill
+    them, and Python would silently yield empty slices for the tail, producing four groups of
+    "00000" on every fingerprint. That would display 60 digits while carrying only 40 digits of
+    entropy — overstating the verification strength users are relying on.
     """
     first, second = sorted([signing_public_a, signing_public_b])
 
-    digest = Hash(SHA256())
+    digest = Hash(SHA512())
     digest.update(DS_FINGERPRINT + first + second)
     raw = digest.finalize()
 
