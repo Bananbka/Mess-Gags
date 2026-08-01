@@ -1,9 +1,13 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import AppException
 from app.core.responses import SuccessResponse
+from app.domains.chats.models import ParticipantRole
+from app.domains.chats.services import chat_services
+from app.domains.crypto.reference.grants import compute_member_set_hash
 from app.domains.crypto.schemas.crypto_schemas import (
     IdentityPublishRequest,
     OwnIdentityResponse,
@@ -12,7 +16,16 @@ from app.domains.crypto.schemas.crypto_schemas import (
     SafetyNumberResponse,
     UserKeysRequest,
 )
-from app.domains.crypto.services import identity_service
+from app.domains.crypto.schemas.epoch_schemas import (
+    ChatKeysResponse,
+    EpochResponse,
+    RosterEntry,
+    RosterResponse,
+    SenderKeyPublishedResponse,
+    SenderKeyUpload,
+)
+from app.domains.crypto.services import epoch_service, identity_service
+from app.domains.messages.services import messages_service
 from app.domains.users.dependencies import get_current_user
 from app.domains.users.models import User
 from app.infrastructure.postgres import get_db
@@ -61,6 +74,94 @@ async def get_keys_batch(
     """Batch-fetch public keys. Called before wrapping group keys for a chat's members."""
     keys = await identity_service.get_active_keys_for_users(db, data.user_ids)
     return SuccessResponse(data=keys, meta={"count": len(keys)})
+
+
+@router.post("/chats/{chat_id}/enable", response_model=SuccessResponse[EpochResponse])
+async def enable_chat_encryption(
+        chat_id: uuid.UUID = Path(..., description="Chat ID"),
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+):
+    """Enable end-to-end encryption and open the chat's first epoch. Owner only."""
+    participant = await messages_service.is_user_in_chat(db, user.id, chat_id)
+    if participant is None:
+        raise AppException(403, "ACCESS_DENIED", "You are not a participant of this chat.")
+
+    if participant.role is not ParticipantRole.OWNER:
+        raise AppException(403, "ACCESS_DENIED", "Only the owner can enable encryption.")
+
+    chat = await chat_services.get_chat_by_id(db, chat_id)
+    if chat is None:
+        raise AppException(404, "NOT_FOUND", "Chat doesn't exist.")
+
+    epoch = await epoch_service.enable_encryption(db, chat, user.id)
+    return SuccessResponse(data=epoch)
+
+
+@router.get("/chats/{chat_id}/roster", response_model=SuccessResponse[RosterResponse])
+async def get_chat_roster(
+        chat_id: uuid.UUID = Path(..., description="Chat ID"),
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+):
+    """Member devices and their public keys, plus the current epoch's member set hash.
+
+    The client MUST compare `member_set_hash` against a hash it computes from `members` before
+    wrapping any key. A server that inserts a ghost device is otherwise undetectable.
+    """
+    await messages_service.get_chat_or_403(db, chat_id, user.id)
+
+    settings = await epoch_service.get_settings_or_404(db, chat_id)
+    roster = await epoch_service.get_roster(db, chat_id)
+
+    return SuccessResponse(data=RosterResponse(
+        chat_id=chat_id,
+        current_epoch=settings.current_epoch,
+        member_set_hash=compute_member_set_hash([r["device_id"] for r in roster]),
+        members=[RosterEntry(**r) for r in roster],
+    ))
+
+
+@router.get("/chats/{chat_id}/keys", response_model=SuccessResponse[ChatKeysResponse])
+async def get_chat_keys(
+        chat_id: uuid.UUID = Path(..., description="Chat ID"),
+        since_epoch: int = Query(0, ge=0, description="Only return epochs after this one"),
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+):
+    """Epochs and the key grants addressed to the caller's devices."""
+    await messages_service.get_chat_or_403(db, chat_id, user.id)
+
+    keys = await epoch_service.get_chat_keys(db, chat_id, user.id, since_epoch)
+    return SuccessResponse(data=keys)
+
+
+@router.post(
+    "/chats/{chat_id}/epochs/{epoch}/sender-keys",
+    response_model=SuccessResponse[SenderKeyPublishedResponse],
+)
+async def publish_sender_key(
+        data: SenderKeyUpload,
+        chat_id: uuid.UUID = Path(..., description="Chat ID"),
+        epoch: int = Path(..., ge=1, description="Epoch to publish into"),
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+):
+    """Publish a chain for this epoch, with one wrapped copy per member device.
+
+    Done lazily on first send rather than at rotation time, so a member who never sends never pays
+    the wrapping cost and rotation never waits for anyone to be online.
+    """
+    await messages_service.get_chat_or_403(db, chat_id, user.id)
+
+    distribution = await epoch_service.publish_sender_key(db, chat_id, user.id, epoch, data)
+
+    return SuccessResponse(data=SenderKeyPublishedResponse(
+        distribution_id=distribution.id,
+        epoch=epoch,
+        sender_key_id=distribution.sender_key_id,
+        grant_count=len(data.grants),
+    ))
 
 
 @router.get("/safety-number/{peer_user_id}", response_model=SuccessResponse[SafetyNumberResponse])

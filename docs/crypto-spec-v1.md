@@ -7,8 +7,9 @@ tests decide.**
 
 Keywords MUST / MUST NOT / SHOULD are used in the RFC 2119 sense.
 
-> **Status.** Identity (§2), ratchet (§3) and message envelope (§4) are frozen and implemented.
-> Key epochs and grants (§5) are specified but not yet implemented.
+> **Status.** Identity (§2), ratchet (§3), message envelope (§4) and key epochs and grants (§5)
+> are frozen and implemented. Rotation triggers (§5.2) are specified but not yet wired into
+> membership changes.
 
 ---
 
@@ -189,15 +190,41 @@ The original ciphertext is destroyed, so there is no cryptographic edit history.
 
 ---
 
-## 5. Key epochs and grants — *specified, not yet implemented*
+## 5. Key epochs and grants
 
 An epoch is `(chat_id, epoch, member_set_hash, reason)` and carries **no key material**. The server
 therefore allocates epochs unilaterally; there is no nominated rotator and no state in which the
 group cannot send.
 
+Key material is supplied lazily and independently by each **sender**, on first send into the epoch.
+A member who never sends never publishes a chain and never pays the wrapping cost. Two senders
+publishing into the same epoch is normal and correct — the chains are independent.
+
+A sender MUST publish grants covering **exactly** the epoch's member device set. A partial upload
+is rejected: it is either a client bug or an attempt to silently exclude a member.
+
 ```
-member_set_hash = SHA-256("|".join(sorted(device_ids)))
+member_set_hash = SHA-256("NS-v1-memberset" || "|".join(sorted(device_ids)))
 ```
+
+### 5.0 Distribution signature
+
+A chain's per-chain signing key MUST be vouched for by the sender's long-term identity key:
+
+```
+payload   = "NS-v1-skdm" || chat_id(16) || u32be(epoch) || sender_key_id(16)
+                         || chain_signing_public(32) || u32be(chain_start_index)
+signature = Ed25519(identity_signing_private, payload)
+```
+
+The server verifies this on publish, so it cannot store a distribution the claimed sender never
+made. Binding chat and epoch stops a valid distribution being relocated.
+
+### 5.0.1 Group size
+
+Grants cost `S x (N-1)` per epoch, where `S` is the number of members who actually send. This is
+enforced, not merely documented: encrypted chats are capped at **256 members**. Signal caps groups
+at 1000 and WhatsApp at 1024; those limits exist for the same reason.
 
 Before wrapping keys for an epoch, a client **MUST** recompute `member_set_hash` from the roster and
 refuse to proceed on mismatch. Without this check a malicious server silently inserts a ghost member
