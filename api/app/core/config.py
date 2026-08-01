@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
 
+    # Set to False only for local HTTP development; auth cookies leak over plaintext without it.
+    COOKIE_SECURE: bool = True
+
     # EMAIL
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587

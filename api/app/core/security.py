@@ -56,7 +56,7 @@ def set_token_cookie(response: Response, token: str, token_type: str) -> None:
                 httponly=True,
                 max_age=604800,
                 samesite="lax",
-                secure=False,
+                secure=settings.COOKIE_SECURE,
             )
         case "access":
             response.set_cookie(
@@ -65,12 +65,12 @@ def set_token_cookie(response: Response, token: str, token_type: str) -> None:
                 httponly=True,
                 max_age=1800,
                 samesite="lax",
-                secure=False,
+                secure=settings.COOKIE_SECURE,
             )
         case _:
             raise ValueError("Invalid token type")
 
 
 def delete_token_cookies(response: Response) -> None:
-    response.delete_cookie(key="access_token", httponly=True, samesite="lax")
-    response.delete_cookie(key="refresh_token", httponly=True, samesite="lax")
+    response.delete_cookie(key="access_token", httponly=True, samesite="lax", secure=settings.COOKIE_SECURE)
+    response.delete_cookie(key="refresh_token", httponly=True, samesite="lax", secure=settings.COOKIE_SECURE)
