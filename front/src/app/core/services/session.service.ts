@@ -53,14 +53,19 @@ export class SessionService {
     readonly isUnlocked = this.keyStore.isUnlocked;
 
     /**
-     * Probe the cookie session once at startup.
+     * Probe the cookie session once at startup, and resume the key store if it was left unlocked.
      *
-     * The key store is memory-only by design, so a surviving cookie lands the user on the unlock
-     * screen rather than straight into their chats.
+     * These are still two separate facts: a valid cookie with no resumable identity lands on the
+     * unlock screen, which is what happens once the stored session expires or after a sign-out.
      */
     async restore(): Promise<void> {
         try {
-            this.user.set(await firstValueFrom(this.authApi.me()));
+            const user = await firstValueFrom(this.authApi.me());
+            this.user.set(user);
+
+            if (await this.keyStore.resume(user.id)) {
+                this.ws.connect();
+            }
         } catch {
             this.user.set(null);
         } finally {

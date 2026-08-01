@@ -14,6 +14,15 @@ import { WebSocketService } from './websocket.service';
 
 const PAGE_SIZE = 50;
 
+/**
+ * Backoff for pulling grants after a `no_key`, in milliseconds.
+ *
+ * Front-loaded because the common case — a peer who just reloaded and re-published — resolves within
+ * a second or two. It then gives up rather than polling forever: a sender who has genuinely not
+ * wrapped for this device cannot be made to by asking the server again.
+ */
+const GRANT_RETRY_DELAYS = [400, 1500, 4000, 10000];
+
 /** A message we are sending. Kept out of the decrypted history until the server accepts it. */
 export interface PendingMessage {
     localId: string;
@@ -123,6 +132,12 @@ export class ChatStoreService {
     private readonly previewOverrides = signal(new Map<string, ChatPreview>());
 
     /**
+     * The ciphertext behind each rendered message, kept so an undecryptable one can be retried once
+     * its grant arrives. Without it, recovering from `no_key` would mean refetching the history.
+     */
+    private readonly rawMessages = new Map<string, MessageResponse>();
+
+    /**
      * The history floor.
      *
      * `history_visibility: 'joined'` means the server withheld pre-join ciphertext outright — not
@@ -171,6 +186,7 @@ export class ChatStoreService {
     });
 
     private rekeyTimer: ReturnType<typeof setTimeout> | null = null;
+    private grantRetryTimer: ReturnType<typeof setTimeout> | null = null;
     private wsBound = false;
 
     constructor() {
@@ -258,6 +274,12 @@ export class ChatStoreService {
     }
 
     private resetConversation(): void {
+        if (this.grantRetryTimer) {
+            clearTimeout(this.grantRetryTimer);
+            this.grantRetryTimer = null;
+        }
+
+        this.rawMessages.clear();
         this.messages.set([]);
         this.pending.set([]);
         this.chatKeys.set(null);
@@ -282,10 +304,13 @@ export class ChatStoreService {
                 this.chatKeys.set(await this.ensureEncryptionEnabled(chatId));
             }
 
-            const decrypted = await this.messages_.loadMessages(chatId, PAGE_SIZE);
+            const { raw, messages: decrypted } = await this.messages_.loadMessages(chatId, PAGE_SIZE);
+            raw.forEach((message) => this.rawMessages.set(message._id, message));
+
             this.messages.set(decrypted);
             this.hasMoreHistory.set(decrypted.length === PAGE_SIZE);
             this.cachePreview(chatId, decrypted);
+            this.scheduleGrantRetry(chatId);
 
             await this.markRead(chatId, decrypted);
         } catch {
@@ -389,9 +414,12 @@ export class ChatStoreService {
 
         this.messagesLoading.set(true);
         try {
-            const older = await this.messages_.loadMessages(chatId, PAGE_SIZE, oldest.id);
+            const { raw, messages: older } = await this.messages_.loadMessages(chatId, PAGE_SIZE, oldest.id);
+            raw.forEach((message) => this.rawMessages.set(message._id, message));
+
             this.messages.update((current) => [...older, ...current]);
             this.hasMoreHistory.set(older.length === PAGE_SIZE);
+            this.scheduleGrantRetry(chatId);
         } finally {
             this.messagesLoading.set(false);
         }
@@ -469,6 +497,77 @@ export class ChatStoreService {
 
         this.memberVerificationError.set(null);
         await this.openChat(chatId);
+    }
+
+    /**
+     * Make `no_key` actually resolve on its own, as the UI says it does.
+     *
+     * A sender mints a fresh chain whenever their in-memory state is gone — after a reload, or when
+     * an epoch opens — and publishes it as a new distribution. Their next message carries a `skid` we
+     * hold no chain for, so it decrypts to `no_key`, and nothing on the socket announces the new
+     * grant. Only pulling it fixes that, which is why the state used to persist until a reload
+     * happened to refetch the keys.
+     *
+     * Retries are bounded and backed off: if a sender genuinely has not wrapped for us yet, no amount
+     * of polling will conjure a grant, and a tight loop would just hammer the endpoint.
+     */
+    private scheduleGrantRetry(chatId: string, attempt = 0): void {
+        if (attempt >= GRANT_RETRY_DELAYS.length || !this.messages().some((m) => m.status === 'no_key')) {
+            return;
+        }
+
+        if (this.grantRetryTimer) {
+            clearTimeout(this.grantRetryTimer);
+        }
+
+        this.grantRetryTimer = setTimeout(async () => {
+            this.grantRetryTimer = null;
+
+            if (this.activeChatId() !== chatId) {
+                return;
+            }
+
+            try {
+                await this.messages_.refreshGrants(chatId);
+                await this.redecryptUnreadable(chatId);
+            } catch {
+                // Offline or a transient failure; the next attempt covers it.
+            }
+
+            this.scheduleGrantRetry(chatId, attempt + 1);
+        }, GRANT_RETRY_DELAYS[attempt]);
+    }
+
+    /** Re-run decryption for messages we could not open, using ciphertext we already hold. */
+    private async redecryptUnreadable(chatId: string): Promise<void> {
+        const stuck = this.messages().filter((m) => m.status === 'no_key' || m.status === 'failed');
+        if (stuck.length === 0) {
+            return;
+        }
+
+        const reopened = new Map<string, DecryptedMessage>();
+        for (const message of stuck) {
+            const raw = this.rawMessages.get(message.id);
+            if (!raw) {
+                continue;
+            }
+
+            const retried = await this.messages_.decrypt(chatId, raw);
+            if (retried.status !== message.status) {
+                reopened.set(message.id, retried);
+            }
+        }
+
+        if (reopened.size === 0) {
+            return;
+        }
+
+        this.messages.update((list) => list.map((m) => reopened.get(m.id) ?? m));
+
+        const newest = this.messages().at(-1);
+        if (newest) {
+            this.cachePreview(chatId, [newest]);
+        }
     }
 
     /**
@@ -562,8 +661,17 @@ export class ChatStoreService {
             return;
         }
 
-        this.appendDecrypted(await this.messages_.decrypt(chatId, raw));
+        this.rawMessages.set(raw._id, raw);
+
+        const decrypted = await this.messages_.decrypt(chatId, raw);
+        this.appendDecrypted(decrypted);
         this.ws.sendRead(chatId, raw._id);
+
+        // The common no_key case: the sender re-published a chain and this is their first message on
+        // it. Pull the new grant rather than leaving the bubble stuck until the user reloads.
+        if (decrypted.status === 'no_key') {
+            this.scheduleGrantRetry(chatId);
+        }
     }
 
     private appendDecrypted(message: DecryptedMessage): void {

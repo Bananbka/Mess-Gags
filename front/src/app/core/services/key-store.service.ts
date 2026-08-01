@@ -16,6 +16,7 @@ import { b64uDecode, b64uEncode } from '../crypto/primitives';
 import { generateChainKey, ReceiverChain, SenderChain } from '../crypto/ratchet';
 import { Distribution, GrantUpload } from '../models/crypto.model';
 import { CryptoApiService } from './crypto-api.service';
+import { SecureSessionService } from './secure-session.service';
 
 const DEVICE_ID_KEY = 'ns.device_id';
 
@@ -45,18 +46,19 @@ interface OwnChain {
 /**
  * Holds unlocked key material and ratchet state for the session.
  *
- * Everything here lives in memory only. The private bundle is re-fetched and re-unwrapped from the
- * password on each login rather than cached in localStorage, because anything persisted in a
- * browser is reachable by XSS — and a stolen identity key means impersonation plus retroactive
- * decryption of every message the attacker also captured.
+ * The private bundle is never written to `localStorage`, because bytes stored there can simply be
+ * read and exfiltrated, and a stolen identity key means impersonation plus retroactive decryption of
+ * every message the attacker also captured. It is instead handed to {@link SecureSessionService},
+ * which seals it under a non-extractable `CryptoKey` in IndexedDB so that reloading the page does not
+ * require the password again. See that service for what the trade-off does and does not buy.
  *
- * The cost is that chain state does not survive a reload: on refresh we re-fetch grants and
- * rebuild receiver chains from their start index. That is correct but re-derives keys, which is
- * why a production client would persist chains in IndexedDB under a key wrapped by the KEK.
+ * Chain state stays in memory. Rebuilding it is cheap — receiver chains come back from grants, and a
+ * sender simply mints a fresh chain — so persisting it would add exposure for very little.
  */
 @Injectable({ providedIn: 'root' })
 export class KeyStoreService {
     private readonly cryptoApi = inject(CryptoApiService);
+    private readonly secureSession = inject(SecureSessionService);
 
     private identity: UnlockedIdentity | null = null;
 
@@ -110,6 +112,23 @@ export class KeyStoreService {
             identityPrivate: bundle.identityPrivate,
         };
         this.isUnlocked.set(true);
+        await this.secureSession.persist(this.identity);
+    }
+
+    /**
+     * Re-open the key store from a previously persisted session, without the password.
+     *
+     * Returns false when there is nothing stored, it has expired, or it belongs to another account.
+     */
+    async resume(userId: string): Promise<boolean> {
+        const restored = await this.secureSession.restore(userId);
+        if (!restored) {
+            return false;
+        }
+
+        this.identity = restored;
+        this.isUnlocked.set(true);
+        return true;
     }
 
     /**
@@ -144,6 +163,7 @@ export class KeyStoreService {
                 identityPrivate: opened.identityPrivate,
             };
             this.isUnlocked.set(true);
+            await this.secureSession.persist(this.identity);
             return true;
         } catch {
             // A GCM tag failure here means the wrong password, not a corrupt bundle.
@@ -157,6 +177,9 @@ export class KeyStoreService {
         this.peerChains.clear();
         this.chainSigningKeys.clear();
         this.isUnlocked.set(false);
+
+        // Signing out must not leave a resumable identity behind for the next person at this browser.
+        void this.secureSession.clear();
     }
 
     private requireIdentity(): UnlockedIdentity {

@@ -33,6 +33,12 @@ export interface DecryptedMessage {
     senderVerified: boolean;
 }
 
+/** A page of history, ciphertext included so undecryptable entries can be retried in place. */
+export interface LoadedMessages {
+    raw: MessageResponse[];
+    messages: DecryptedMessage[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class MessageService {
     private readonly chatApi = inject(ChatApiService);
@@ -121,7 +127,7 @@ export class MessageService {
      * Grants are ingested first so chains exist before we walk the messages; otherwise every
      * message from a sender we have not seen would report no_key on first load.
      */
-    async loadMessages(chatId: string, limit = 50, beforeId?: string): Promise<DecryptedMessage[]> {
+    async loadMessages(chatId: string, limit = 50, beforeId?: string): Promise<LoadedMessages> {
         // A chat need not have crypto settings at all: channels are signed rather than encrypted, and
         // a private chat has none until encryption is enabled for it. Neither is an error — there are
         // simply no grants to ingest, and `decrypt` reports anything it cannot open as `no_key`
@@ -133,7 +139,24 @@ export class MessageService {
 
         const raw = await firstValueFrom(this.chatApi.getMessages(chatId, limit, beforeId));
 
-        return Promise.all(raw.map((message) => this.decrypt(chatId, message)));
+        // The ciphertext is handed back too. A message that decrypts to no_key today may be
+        // decryptable in a second, and re-running it needs the envelope, not another round trip.
+        return { raw, messages: await Promise.all(raw.map((message) => this.decrypt(chatId, message))) };
+    }
+
+    /**
+     * Re-fetch this chat's distributions and ingest any we do not already hold.
+     *
+     * The cure for `no_key`. A sender mints a new chain whenever their in-memory state is gone —
+     * after a reload, or when an epoch opens — and publishes it as a new distribution. Until we
+     * fetch that distribution we hold no chain for the `skid` their messages carry, so they decrypt
+     * to `no_key`. Nothing arrives over the socket to tell us; the grants have to be pulled.
+     */
+    async refreshGrants(chatId: string): Promise<void> {
+        const keys = await this.tryGetChatKeys(chatId);
+        if (keys) {
+            await this.keyStore.ingestDistributions(chatId, keys.distributions);
+        }
     }
 
     /** Chat keys, or null when the chat has no crypto settings. Other failures still throw. */
