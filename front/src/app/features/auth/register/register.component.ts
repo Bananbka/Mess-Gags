@@ -1,11 +1,37 @@
-import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { AbstractControl, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { Eye, EyeOff, LucideAngularModule, ShieldCheck } from 'lucide-angular';
 
 import { SessionService } from '../../../core/services/session.service';
+import { applyServerErrors, errorTextFor } from '../../../shared/forms/server-errors';
 import { BrandMarkComponent } from '../../../shared/ui/brand-mark/brand-mark.component';
+
+/** Local validation messages, keyed by the validator that failed. */
+const MESSAGES: Record<string, Partial<Record<string, string>>> = {
+    fullName: {
+        required: 'Enter your name.',
+        maxlength: 'Keep this to 30 characters or fewer.',
+    },
+    username: {
+        required: 'Choose a username.',
+        minlength: 'Use at least 6 characters.',
+        pattern: 'Start with a letter, then letters, digits or underscores only.',
+    },
+    email: {
+        required: 'Enter your email address.',
+        email: 'That does not look like an email address.',
+    },
+    phoneNumber: {
+        required: 'Enter your phone number.',
+        pattern: 'Start with + and the country code, e.g. +380501234567.',
+    },
+    password: {
+        required: 'Choose a password.',
+        minlength: 'Use at least 12 characters.',
+        maxlength: 'Keep this to 72 characters or fewer.',
+    },
+};
 
 @Component({
     selector: 'app-register',
@@ -25,7 +51,11 @@ export class RegisterComponent {
 
     /**
      * Full name and phone number are not in the design, but `POST /auth/register` requires both —
-     * the phone number is validated against libphonenumber server-side, so it cannot be defaulted.
+     * the phone number is parsed by libphonenumber server-side, so it cannot be defaulted.
+     *
+     * The pattern here only checks the shape. Whether a number actually exists in its country is a
+     * question the client cannot answer, so that verdict comes back from the server and is attached
+     * to this control by `applyServerErrors`.
      */
     readonly form = this.fb.nonNullable.group({
         fullName: ['', [Validators.required, Validators.maxLength(30)]],
@@ -38,6 +68,15 @@ export class RegisterComponent {
     readonly eyeIcon = Eye;
     readonly eyeOffIcon = EyeOff;
     readonly shieldCheckIcon = ShieldCheck;
+
+    /** The message under a field, whether it came from a local validator or from the server. */
+    messageFor(name: keyof typeof this.form.controls): string | null {
+        return errorTextFor(this.form.controls[name], MESSAGES[name] ?? {});
+    }
+
+    isInvalid(control: AbstractControl): boolean {
+        return control.touched && control.invalid;
+    }
 
     async submit(): Promise<void> {
         if (this.form.invalid || this.submitting()) {
@@ -55,22 +94,10 @@ export class RegisterComponent {
             // The OTP is mailed to this address, so the verify screen needs it to label itself.
             await this.router.navigate(['/verify'], { queryParams: { email } });
         } catch (error) {
-            this.error.set(this.messageFor(error));
+            // Field-level rejections land on their fields; only what is left over shows up here.
+            this.error.set(applyServerErrors(this.form, error) ?? 'Could not create the account. Please try again.');
         } finally {
             this.submitting.set(false);
         }
-    }
-
-    private messageFor(error: unknown): string {
-        if (error instanceof HttpErrorResponse) {
-            const detail = error.error?.message ?? error.error?.detail;
-            if (typeof detail === 'string') {
-                return detail;
-            }
-            if (error.status === 422) {
-                return 'Some of those details were rejected. Check the email and phone number.';
-            }
-        }
-        return 'Could not create the account. Please try again.';
     }
 }

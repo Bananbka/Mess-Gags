@@ -16,9 +16,14 @@ export const appConfig: ApplicationConfig = {
         provideHttpClient(withInterceptors([credentialsInterceptor])),
         // provideAppInitializer rather than the deprecated APP_INITIALIZER token. Config must land
         // before the session probe, since the probe needs the resolved API base URL.
-        provideAppInitializer(async () => {
-            await inject(ConfigService).load();
-            await inject(SessionService).restore();
+        //
+        // Both services are resolved up front, before the first await: the injection context ends at
+        // the initial suspension, so an inject() after one throws NG0203.
+        provideAppInitializer(() => {
+            const config = inject(ConfigService);
+            const session = inject(SessionService);
+
+            return config.load().then(() => session.restore());
         }),
     ],
 };

@@ -23,7 +23,11 @@
                     type="text"
                     placeholder="Dev Team"
                     formControlName="title"
+                    [attr.aria-invalid]="!!titleError()"
                 />
+                @if (titleError(); as message) {
+                    <p class="hint is-error">{{ message }}</p>
+                }
             </div>
 
             <div class="field">

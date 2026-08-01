@@ -24,6 +24,16 @@
     &:focus {
         border-color: rgb(163 88 249 / 60%);
     }
+
+    /* Driven off aria-invalid so the visual state and the announced state cannot drift apart. */
+    &[aria-invalid='true'] {
+        border-color: var(--danger);
+        background: rgb(239 68 68 / 6%);
+
+        &:focus {
+            border-color: var(--danger);
+        }
+    }
 }
 
 /* The uppercase micro-label above every field. */
@@ -317,6 +327,16 @@
 
     .field textarea {
         resize: vertical;
+    }
+
+    .hint {
+        margin: 0.375rem 0 0;
+        color: var(--muted-foreground);
+        font-size: 0.75rem;
+
+        &.is-error {
+            color: var(--danger);
+        }
     }
 
     .section {

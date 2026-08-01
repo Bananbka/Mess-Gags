@@ -8,6 +8,7 @@ import { UserSearchResult } from '../../../core/models/chat.model';
 import { ChatApiService } from '../../../core/services/chat-api.service';
 import { ChatStoreService } from '../../../core/services/chat-store.service';
 import { DirectoryService } from '../../../core/services/directory.service';
+import { applyServerErrors, errorTextFor } from '../../../shared/forms/server-errors';
 import { AvatarComponent } from '../../../shared/ui/avatar/avatar.component';
 
 @Component({
@@ -38,6 +39,13 @@ export class CreateChannelComponent {
 
     readonly slug = computed(() => this.form.controls.title.value.trim().toLowerCase().replace(/\s+/g, '-'));
     readonly canCreate = computed(() => this.form.valid && !this.submitting());
+
+    titleError(): string | null {
+        return errorTextFor(this.form.controls.title, {
+            required: 'Give the channel a name.',
+            maxlength: 'Keep this to 255 characters or fewer.',
+        });
+    }
 
     readonly arrowLeftIcon = ArrowLeft;
     readonly searchIcon = Search;
@@ -103,8 +111,8 @@ export class CreateChannelComponent {
 
             await this.store.loadChats();
             await this.router.navigate(['/chats', chat.id]);
-        } catch {
-            this.error.set('Could not create the channel.');
+        } catch (error) {
+            this.error.set(applyServerErrors(this.form, error) ?? 'Could not create the channel.');
         } finally {
             this.submitting.set(false);
         }

@@ -23,8 +23,11 @@
                     type="text"
                     placeholder="announcements"
                     formControlName="title"
+                    [attr.aria-invalid]="!!titleError()"
                 />
-                @if (slug()) {
+                @if (titleError(); as message) {
+                    <p class="hint is-error">{{ message }}</p>
+                } @else if (slug()) {
                     <p class="hint">
                         Shown as
                         <span class="mono handle">#{{ slug() }}</span>

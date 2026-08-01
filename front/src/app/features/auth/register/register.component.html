@@ -17,7 +17,17 @@
                     autocomplete="name"
                     placeholder="Alice Kowalski"
                     formControlName="fullName"
+                    [attr.aria-invalid]="isInvalid(form.controls.fullName)"
+                    [attr.aria-describedby]="messageFor('fullName') ? 'fullName-error' : null"
                 />
+                @if (messageFor('fullName'); as message) {
+                    <p
+                        class="hint is-error"
+                        id="fullName-error"
+                    >
+                        {{ message }}
+                    </p>
+                }
             </div>
 
             <div class="field">
@@ -28,10 +38,15 @@
                     autocomplete="username"
                     placeholder="alice_k"
                     formControlName="username"
+                    [attr.aria-invalid]="isInvalid(form.controls.username)"
+                    [attr.aria-describedby]="messageFor('username') ? 'username-error' : null"
                 />
-                @if (form.controls.username.touched && form.controls.username.invalid) {
-                    <p class="hint is-error">
-                        At least 6 characters, starting with a letter. Letters, digits and underscore only.
+                @if (messageFor('username'); as message) {
+                    <p
+                        class="hint is-error"
+                        id="username-error"
+                    >
+                        {{ message }}
                     </p>
                 }
             </div>
@@ -44,7 +59,17 @@
                     autocomplete="email"
                     placeholder="alice@example.com"
                     formControlName="email"
+                    [attr.aria-invalid]="isInvalid(form.controls.email)"
+                    [attr.aria-describedby]="messageFor('email') ? 'email-error' : null"
                 />
+                @if (messageFor('email'); as message) {
+                    <p
+                        class="hint is-error"
+                        id="email-error"
+                    >
+                        {{ message }}
+                    </p>
+                }
             </div>
 
             <div class="field">
@@ -53,11 +78,25 @@
                     id="phone"
                     type="tel"
                     autocomplete="tel"
-                    placeholder="+48123456789"
+                    placeholder="+380501234567"
                     formControlName="phoneNumber"
+                    [attr.aria-invalid]="isInvalid(form.controls.phoneNumber)"
+                    [attr.aria-describedby]="messageFor('phoneNumber') ? 'phone-error' : 'phone-help'"
                 />
-                @if (form.controls.phoneNumber.touched && form.controls.phoneNumber.invalid) {
-                    <p class="hint is-error">Include the country code, for example +48123456789.</p>
+                @if (messageFor('phoneNumber'); as message) {
+                    <p
+                        class="hint is-error"
+                        id="phone-error"
+                    >
+                        {{ message }}
+                    </p>
+                } @else {
+                    <p
+                        class="hint"
+                        id="phone-help"
+                    >
+                        Full international format, including the country code.
+                    </p>
                 }
             </div>
 
@@ -70,6 +109,8 @@
                         autocomplete="new-password"
                         placeholder="12+ characters"
                         formControlName="password"
+                        [attr.aria-invalid]="isInvalid(form.controls.password)"
+                        [attr.aria-describedby]="messageFor('password') ? 'password-error' : null"
                     />
                     <button
                         type="button"
@@ -80,8 +121,13 @@
                         <lucide-icon [img]="showPassword() ? eyeOffIcon : eyeIcon" />
                     </button>
                 </div>
-                @if (form.controls.password.touched && form.controls.password.invalid) {
-                    <p class="hint is-error">Use at least 12 characters.</p>
+                @if (messageFor('password'); as message) {
+                    <p
+                        class="hint is-error"
+                        id="password-error"
+                    >
+                        {{ message }}
+                    </p>
                 }
             </div>
         </div>

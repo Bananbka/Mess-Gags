@@ -1,10 +1,11 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { AbstractControl, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { Eye, EyeOff, LucideAngularModule } from 'lucide-angular';
 
 import { SessionService } from '../../../core/services/session.service';
+import { applyServerErrors, setServerError } from '../../../shared/forms/server-errors';
 import { BrandMarkComponent } from '../../../shared/ui/brand-mark/brand-mark.component';
 
 @Component({
@@ -51,21 +52,38 @@ export class LoginComponent {
             await this.session.login(username, password);
             await this.router.navigate(['/unlock']);
         } catch (error) {
-            this.error.set(this.messageFor(error));
+            this.handle(error);
         } finally {
             this.submitting.set(false);
         }
     }
 
-    private messageFor(error: unknown): string {
-        if (error instanceof HttpErrorResponse) {
-            if (error.status === 401 || error.status === 400) {
-                return 'That username and password do not match.';
-            }
-            if (error.status === 403) {
-                return 'This account is not verified yet. Check your email for the code.';
-            }
+    isInvalid(control: AbstractControl): boolean {
+        return control.touched && control.invalid;
+    }
+
+    serverMessageFor(name: keyof typeof this.form.controls): string | null {
+        const server = this.form.controls[name].errors?.['server'];
+        return typeof server === 'string' ? server : null;
+    }
+
+    /**
+     * A rejected sign-in is not attributable to one field — the server deliberately does not say
+     * which half was wrong — so both are marked and the explanation goes above the button.
+     */
+    private handle(error: unknown): void {
+        if (error instanceof HttpErrorResponse && (error.status === 401 || error.status === 400)) {
+            setServerError(this.form.controls.username, '');
+            setServerError(this.form.controls.password, '');
+            this.error.set('That username and password do not match.');
+            return;
         }
-        return 'Could not sign in. Please try again.';
+
+        if (error instanceof HttpErrorResponse && error.status === 403) {
+            this.error.set('This account is not verified yet. Check your email for the code.');
+            return;
+        }
+
+        this.error.set(applyServerErrors(this.form, error) ?? 'Could not sign in. Please try again.');
     }
 }

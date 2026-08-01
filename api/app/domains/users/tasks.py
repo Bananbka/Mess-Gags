@@ -90,8 +90,12 @@ def send_email(type_: EmailTasks, email_to: str, **kwargs):
                 raise ValueError("Unknown email type")
 
         asyncio.run(func(email_to, **kwargs))
-        logger.info(f"Successfully sent reset HTML-email to {email_to}")
+        logger.info(f"Successfully sent {type_} HTML-email to {email_to}")
         return True
     except Exception as e:
-        logger.error(f"Failed to send email to {email_to}: {e}")
+        # exc_info matters here. fastapi-mail sends inside an `async with Connection(...)`, so when
+        # the server rejects the message its __aexit__ still issues QUIT on the now-dead socket and
+        # raises SMTPServerDisconnected("Server not connected"). That replaces the useful error —
+        # a 550 quoting the actual reason — with a generic one. Only the full chain shows the cause.
+        logger.error(f"Failed to send email to {email_to}: {e!r}", exc_info=True)
         return False

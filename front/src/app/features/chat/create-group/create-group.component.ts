@@ -9,6 +9,7 @@ import { ChatApiService } from '../../../core/services/chat-api.service';
 import { ChatStoreService } from '../../../core/services/chat-store.service';
 import { CryptoApiService } from '../../../core/services/crypto-api.service';
 import { DirectoryService } from '../../../core/services/directory.service';
+import { applyServerErrors, errorTextFor } from '../../../shared/forms/server-errors';
 import { AvatarComponent } from '../../../shared/ui/avatar/avatar.component';
 
 @Component({
@@ -39,6 +40,13 @@ export class CreateGroupComponent {
     });
 
     readonly canCreate = computed(() => this.form.valid && this.selected().length > 0 && !this.submitting());
+
+    titleError(): string | null {
+        return errorTextFor(this.form.controls.title, {
+            required: 'Give the group a name.',
+            maxlength: 'Keep this to 255 characters or fewer.',
+        });
+    }
 
     readonly arrowLeftIcon = ArrowLeft;
     readonly searchIcon = Search;
@@ -118,8 +126,8 @@ export class CreateGroupComponent {
 
             await this.store.loadChats();
             await this.router.navigate(['/chats', chat.id]);
-        } catch {
-            this.error.set('Could not create the group.');
+        } catch (error) {
+            this.error.set(applyServerErrors(this.form, error) ?? 'Could not create the group.');
         } finally {
             this.submitting.set(false);
         }

@@ -17,7 +17,11 @@
                     autocomplete="username"
                     placeholder="alice_k"
                     formControlName="username"
+                    [attr.aria-invalid]="isInvalid(form.controls.username)"
                 />
+                @if (serverMessageFor('username')) {
+                    <p class="hint is-error">{{ serverMessageFor('username') }}</p>
+                }
             </div>
 
             <div class="field">
@@ -29,6 +33,7 @@
                         autocomplete="current-password"
                         placeholder="Your password"
                         formControlName="password"
+                        [attr.aria-invalid]="isInvalid(form.controls.password)"
                     />
                     <button
                         type="button"
