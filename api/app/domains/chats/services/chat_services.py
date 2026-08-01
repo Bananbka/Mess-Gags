@@ -10,6 +10,8 @@ from sqlalchemy.orm import selectinload, aliased
 from app.core.exceptions import AppException
 from app.domains.chats.models import Chat, ChatParticipant, ChatType, ParticipantRole, Contact
 from app.domains.chats.schemas.chat_schemas import GroupChatCreateRequest
+from app.domains.crypto.models import ChatKeyEpoch, EpochReason
+from app.domains.crypto.services import epoch_service
 from app.domains.users.services.user_service import get_user_by_id
 
 
@@ -294,18 +296,38 @@ async def get_participants_by_ids(
     return list(res.scalars().all())
 
 
-async def delete_chat_participants(db: AsyncSession, chat_id: uuid.UUID, user_ids: list[uuid.UUID]) -> int:
+async def delete_chat_participants(
+        db: AsyncSession,
+        chat_id: uuid.UUID,
+        user_ids: list[uuid.UUID],
+        mongo_db=None,
+) -> tuple[int, "ChatKeyEpoch | None"]:
+    """Remove participants, rotating the chat's key epoch in the same transaction.
+
+    Rotation on removal is mandatory and must be atomic with the removal itself: the departed
+    member keeps every key they already held, so anything sent under the old epoch after they left
+    would still be readable by them.
+    """
     stmt = delete(ChatParticipant).where(
         ChatParticipant.chat_id == chat_id,
         ChatParticipant.user_id.in_(user_ids)
     )
     res = await db.execute(stmt)
+
+    epoch = await epoch_service.rotate_if_encrypted(
+        db, chat_id, EpochReason.MEMBER_REMOVED, mongo_db=mongo_db
+    )
+
     await db.commit()
+    return res.rowcount, epoch
 
-    return res.rowcount
 
-
-async def add_chat_participants(db: AsyncSession, chat_id: uuid.UUID, user_ids: list[uuid.UUID]) -> int:
+async def add_chat_participants(
+        db: AsyncSession,
+        chat_id: uuid.UUID,
+        user_ids: list[uuid.UUID],
+        mongo_db=None,
+) -> tuple[int, "ChatKeyEpoch | None"]:
     stmt = postgresql.insert(ChatParticipant).values([
         {"chat_id": chat_id, "user_id": user_id, "role": ParticipantRole.MEMBER}
         for user_id in user_ids
@@ -314,8 +336,36 @@ async def add_chat_participants(db: AsyncSession, chat_id: uuid.UUID, user_ids: 
     )
 
     result = await db.execute(stmt)
+
+    epoch = await epoch_service.rotate_if_encrypted(
+        db, chat_id, EpochReason.MEMBER_ADDED,
+        joining_user_ids=user_ids, mongo_db=mongo_db,
+    )
+
     await db.commit()
-    return result.rowcount
+    return result.rowcount, epoch
+
+
+async def leave_chat(
+        db: AsyncSession,
+        chat_id: uuid.UUID,
+        user_id: uuid.UUID,
+        mongo_db=None,
+) -> "ChatKeyEpoch | None":
+    """Remove yourself from a chat. Same rotation requirement as being removed by an admin."""
+    await db.execute(
+        delete(ChatParticipant).where(
+            ChatParticipant.chat_id == chat_id,
+            ChatParticipant.user_id == user_id,
+        )
+    )
+
+    epoch = await epoch_service.rotate_if_encrypted(
+        db, chat_id, EpochReason.MEMBER_REMOVED, mongo_db=mongo_db
+    )
+
+    await db.commit()
+    return epoch
 
 
 async def change_role(db: AsyncSession, chat_id: uuid.UUID, user_id: uuid.UUID,

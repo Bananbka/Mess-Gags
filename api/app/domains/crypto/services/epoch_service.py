@@ -140,6 +140,40 @@ async def allocate_epoch(
     return epoch
 
 
+async def rotate_if_encrypted(
+        db: AsyncSession,
+        chat_id: uuid.UUID,
+        reason: EpochReason,
+        created_by_user_id: uuid.UUID | None = None,
+        joining_user_ids: list[uuid.UUID] | None = None,
+        mongo_db=None,
+) -> ChatKeyEpoch | None:
+    """Rotate a chat's epoch if it is encrypted, otherwise do nothing.
+
+    Does not commit — the caller commits so the rotation lands atomically with the membership
+    change that triggered it. A removal that committed without its rotation would leave the
+    departed member able to read everything sent in the interim.
+    """
+    settings = await get_settings(db, chat_id)
+    if settings is None or settings.crypto_mode is not CryptoMode.SENDER_KEYS_V1:
+        return None
+
+    # Adding a member does not require rotation when history is shared: existing members backfill
+    # grants for earlier epochs instead, and the joiner is meant to see that history anyway.
+    if (
+        reason is EpochReason.MEMBER_ADDED
+        and settings.history_visibility is HistoryVisibility.SHARED
+    ):
+        return None
+
+    return await allocate_epoch(
+        db, chat_id, reason,
+        created_by_user_id=created_by_user_id,
+        joining_user_ids=joining_user_ids,
+        mongo_db=mongo_db,
+    )
+
+
 async def enable_encryption(
         db: AsyncSession,
         chat: Chat,
@@ -178,6 +212,25 @@ async def enable_encryption(
 async def get_epoch(db: AsyncSession, chat_id: uuid.UUID, epoch: int) -> ChatKeyEpoch | None:
     stmt = select(ChatKeyEpoch).where(
         ChatKeyEpoch.chat_id == chat_id, ChatKeyEpoch.epoch == epoch
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def get_distribution(
+        db: AsyncSession,
+        chat_id: uuid.UUID,
+        epoch_number: int,
+        sender_key_id: uuid.UUID,
+) -> SenderKeyDistribution | None:
+    """Look up a published chain by its opaque handle, scoped to one epoch."""
+    stmt = (
+        select(SenderKeyDistribution)
+        .join(ChatKeyEpoch, ChatKeyEpoch.id == SenderKeyDistribution.epoch_id)
+        .where(
+            SenderKeyDistribution.chat_id == chat_id,
+            SenderKeyDistribution.sender_key_id == sender_key_id,
+            ChatKeyEpoch.epoch == epoch_number,
+        )
     )
     return (await db.execute(stmt)).scalar_one_or_none()
 

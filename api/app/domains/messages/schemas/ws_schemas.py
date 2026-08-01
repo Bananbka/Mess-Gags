@@ -15,6 +15,9 @@ class WSEventType(str, Enum):
     USER_OFFLINE = "user_offline"
     USER_ONLINE = "user_online"
     CHAT_CREATED = "chat_created"
+    # A new key epoch opened. Clients should publish a sender key before their next send, and
+    # fetch grants so they can read what others send under it.
+    KEY_EPOCH_STARTED = "key_epoch_started"
     ERROR = "error"
 
 

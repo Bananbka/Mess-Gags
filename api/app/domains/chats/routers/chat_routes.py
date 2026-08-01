@@ -23,6 +23,23 @@ from app.infrastructure.services import redis_service
 router = APIRouter(prefix='/chats', tags=['Chats'])
 
 
+async def _announce_epoch(db: AsyncSession, redis: Redis, chat_id: uuid.UUID, epoch) -> None:
+    """Notify remaining members that a new key epoch opened. No-op for unencrypted chats."""
+    if epoch is None:
+        return
+
+    participant_ids = await chat_services.get_chat_participants_ids(db, chat_id)
+
+    await redis_service.send_key_epoch_started(
+        redis,
+        chat_id=chat_id,
+        epoch=epoch.epoch,
+        member_set_hash=epoch.member_set_hash,
+        reason=epoch.reason.value if hasattr(epoch.reason, "value") else str(epoch.reason),
+        recipient_ids=list(participant_ids),
+    )
+
+
 @router.post('/private', response_model=SuccessResponse[ChatResponse])
 async def private_chat(
         data: PrivateChatCreateRequest,
@@ -111,6 +128,8 @@ async def delete_participants(
         data: UserListRequest, user: User = Depends(get_current_user),
         chat_id: uuid.UUID = Path(..., description="Chat ID"),
         db: AsyncSession = Depends(get_db),
+        redis: Redis = Depends(get_redis),
+        mongo_db: AsyncIOMotorDatabase = Depends(get_mongo_db),
 ):
     chat_p = await messages_service.is_user_in_chat(db, user.id, chat_id)
 
@@ -138,18 +157,59 @@ async def delete_participants(
             raise AppException(403, "ACCESS_DENIED",
                                'You cannot remove a participant with an equal or higher role.')
 
-    await chat_services.delete_chat_participants(db, chat_id, data.user_ids)
+    _, epoch = await chat_services.delete_chat_participants(
+        db, chat_id, data.user_ids, mongo_db=mongo_db
+    )
+    await _announce_epoch(db, redis, chat_id, epoch)
 
     chat = await chat_services.get_chat_by_id(db, chat_id)
 
     return SuccessResponse(data=chat)
 
 
+@router.post('/{chat_id}/leave', response_model=SuccessResponse[dict])
+async def leave_chat(
+        user: User = Depends(get_current_user),
+        chat_id: uuid.UUID = Path(..., description="Chat ID"),
+        db: AsyncSession = Depends(get_db),
+        redis: Redis = Depends(get_redis),
+        mongo_db: AsyncIOMotorDatabase = Depends(get_mongo_db),
+):
+    """Remove yourself from a group or channel.
+
+    Triggers the same mandatory key rotation as being removed by an admin — a departing member
+    keeps every key they already held, so the chat must re-key before sending anything else.
+    """
+    participant = await messages_service.is_user_in_chat(db, user.id, chat_id)
+    if participant is None:
+        raise AppException(403, "ACCESS_DENIED", 'You are not a participant of this chat.')
+
+    chat = await chat_services.get_chat_by_id(db, chat_id)
+    if chat is None:
+        raise AppException(404, "NOT_FOUND", "Chat doesn't exist.")
+
+    if chat.chat_type == ChatType.PRIVATE:
+        raise AppException(400, "INVALID_CHAT_TYPE", 'You cannot leave a private chat.')
+
+    if participant.role == ParticipantRole.OWNER:
+        raise AppException(
+            400, "OWNER_CANNOT_LEAVE",
+            'Transfer ownership before leaving, or delete the chat.',
+        )
+
+    epoch = await chat_services.leave_chat(db, chat_id, user.id, mongo_db=mongo_db)
+    await _announce_epoch(db, redis, chat_id, epoch)
+
+    return SuccessResponse(data={"message": "You have left the chat."})
+
+
 @router.post('/{chat_id}/add-participants', response_model=SuccessResponse[ChatResponse])
 async def add_participants(
         data: UserListRequest, user: User = Depends(get_current_user),
         chat_id: uuid.UUID = Path(..., description="Chat ID"),
-        db: AsyncSession = Depends(get_db)
+        db: AsyncSession = Depends(get_db),
+        redis: Redis = Depends(get_redis),
+        mongo_db: AsyncIOMotorDatabase = Depends(get_mongo_db),
 ):
     chat_p = await messages_service.is_user_in_chat(db, user.id, chat_id)
 
@@ -166,7 +226,10 @@ async def add_participants(
     if chat_p.role == ParticipantRole.MEMBER:
         raise AppException(403, "ACCESS_DENIED", 'You dont have permission to add participants to this chat.')
 
-    await chat_services.add_chat_participants(db, chat_id, data.user_ids)
+    _, epoch = await chat_services.add_chat_participants(
+        db, chat_id, data.user_ids, mongo_db=mongo_db
+    )
+    await _announce_epoch(db, redis, chat_id, epoch)
 
     chat = await chat_services.get_chat_by_id(db, chat_id)
 
