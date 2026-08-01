@@ -174,6 +174,45 @@ async def rotate_if_encrypted(
     )
 
 
+async def rotate_chats_for_new_device(
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        mongo_db=None,
+) -> list[tuple[uuid.UUID, ChatKeyEpoch]]:
+    """Rotate every encrypted chat this user belongs to, because they gained a device.
+
+    A new device changes the member set of each of those chats, and grants are wrapped per device.
+    Without a rotation the device is stranded: chains already published in the open epoch carry no
+    grant for it, and `uq_skd_epoch_sender_device` allows only one distribution per device per epoch,
+    so no sender can top the missing grants up afterwards. Every message in that epoch would report
+    `no_key` on the new device forever, with nothing able to resolve it.
+
+    Rotating opens a fresh epoch whose roster includes the device, and senders mint a chain for it on
+    their next send. Does not commit — the caller commits so the rotation lands atomically with the
+    identity that triggered it.
+    """
+    chat_ids = (await db.execute(
+        select(ChatParticipant.chat_id)
+        .join(ChatCryptoSettings, ChatCryptoSettings.chat_id == ChatParticipant.chat_id)
+        .where(
+            ChatParticipant.user_id == user_id,
+            ChatCryptoSettings.crypto_mode == CryptoMode.SENDER_KEYS_V1,
+        )
+    )).scalars().all()
+
+    rotated = []
+    for chat_id in chat_ids:
+        epoch = await allocate_epoch(
+            db, chat_id, EpochReason.MEMBER_ADDED,
+            created_by_user_id=user_id,
+            mongo_db=mongo_db,
+        )
+        if epoch is not None:
+            rotated.append((chat_id, epoch))
+
+    return rotated
+
+
 async def enable_encryption(
         db: AsyncSession,
         chat: Chat,

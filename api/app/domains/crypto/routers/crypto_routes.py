@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, Path, Query
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppException
@@ -28,7 +29,10 @@ from app.domains.crypto.services import epoch_service, identity_service
 from app.domains.messages.services import messages_service
 from app.domains.users.dependencies import get_current_user
 from app.domains.users.models import User
+from app.infrastructure.mongo import get_mongo_db
 from app.infrastructure.postgres import get_db
+from app.infrastructure.redis import get_redis
+from app.infrastructure.services import redis_service
 
 router = APIRouter(prefix="/crypto", tags=["Crypto"])
 
@@ -38,10 +42,34 @@ async def publish_identity(
         data: IdentityPublishRequest,
         user: User = Depends(get_current_user),
         db: AsyncSession = Depends(get_db),
+        redis: Redis = Depends(get_redis),
+        mongo_db=Depends(get_mongo_db),
 ):
-    """Publish or rotate this device's identity keys."""
+    """Publish or rotate this device's identity keys.
+
+    Publishing enlarges the member set of every encrypted chat this user belongs to, so each of those
+    chats is rotated in the same transaction. Skipping the rotation strands the new device: grants are
+    wrapped per device, chains already published in the open epoch have none for it, and
+    `uq_skd_epoch_sender_device` prevents senders from adding one later.
+    """
     key = await identity_service.publish_identity(db, user.id, data)
-    return SuccessResponse(data=key)
+
+    epochs = await epoch_service.rotate_chats_for_new_device(db, user.id, mongo_db=mongo_db)
+    await db.commit()
+
+    # Best-effort, like every other epoch announcement: anyone offline reconciles on reconnect.
+    for chat_id, epoch in epochs:
+        participant_ids = await chat_services.get_chat_participants_ids(db, chat_id)
+        await redis_service.send_key_epoch_started(
+            redis,
+            chat_id=chat_id,
+            epoch=epoch.epoch,
+            member_set_hash=epoch.member_set_hash,
+            reason=epoch.reason.value if hasattr(epoch.reason, "value") else str(epoch.reason),
+            recipient_ids=list(participant_ids),
+        )
+
+    return SuccessResponse(data=key, meta={"rotated_chats": len(epochs)})
 
 
 @router.get("/identity/me", response_model=SuccessResponse[list[OwnIdentityResponse]])

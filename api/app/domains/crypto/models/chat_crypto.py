@@ -150,7 +150,10 @@ class SenderKeyDistribution(Base):
 
     epoch = relationship("ChatKeyEpoch")
 
+    # Deliberately not unique on (epoch_id, sender_device_id). A device may publish several chains
+    # within one epoch, because chain state is secret and memory-only, so a client that reloads has
+    # to mint a fresh one. Identity is carried by sender_key_id, and receivers select a chain per
+    # message from the envelope's `skid`, so concurrent chains from one sender are already handled.
     __table_args__ = (
-        UniqueConstraint("epoch_id", "sender_device_id", name="uq_skd_epoch_sender_device"),
         UniqueConstraint("chat_id", "sender_key_id", name="uq_skd_chat_sender_key_id"),
     )
