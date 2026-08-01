@@ -270,6 +270,30 @@ async def get_chat_by_id(db, chat_id: uuid.UUID) -> Chat | None:
     return res.scalar_one_or_none()
 
 
+ROLE_RANK = {
+    ParticipantRole.OWNER: 3,
+    ParticipantRole.ADMIN: 2,
+    ParticipantRole.MEMBER: 1,
+}
+
+
+def role_rank(role: ParticipantRole) -> int:
+    return ROLE_RANK[role]
+
+
+async def get_participants_by_ids(
+        db: AsyncSession,
+        chat_id: uuid.UUID,
+        user_ids: list[uuid.UUID]
+) -> list[ChatParticipant]:
+    stmt = select(ChatParticipant).where(
+        ChatParticipant.chat_id == chat_id,
+        ChatParticipant.user_id.in_(user_ids)
+    )
+    res = await db.execute(stmt)
+    return list(res.scalars().all())
+
+
 async def delete_chat_participants(db: AsyncSession, chat_id: uuid.UUID, user_ids: list[uuid.UUID]) -> int:
     stmt = delete(ChatParticipant).where(
         ChatParticipant.chat_id == chat_id,

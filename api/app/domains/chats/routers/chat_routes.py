@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppException
 from app.core.responses import SuccessResponse
-from app.domains.chats.models import ParticipantRole
+from app.domains.chats.models import ParticipantRole, ChatType
 from app.domains.chats.schemas.chat_schemas import ChatResponse, PrivateChatCreateRequest, GroupChatCreateRequest, \
     UserListRequest, ChatParticipantResponse, ChangeRoleRequest
 from app.domains.chats.services import chat_services
@@ -117,8 +117,26 @@ async def delete_participants(
     if chat_p is None:
         raise AppException(403, "ACCESS_DENIED", 'You dont have permission to access this chat.')
 
+    chat = await chat_services.get_chat_by_id(db, chat_id)
+    if chat is None:
+        raise AppException(404, "NOT_FOUND", "Chat doesn't exist.")
+
+    if chat.chat_type == ChatType.PRIVATE:
+        raise AppException(400, "INVALID_CHAT_TYPE", 'Participants of a private chat cannot be changed.')
+
     if chat_p.role == ParticipantRole.MEMBER:
         raise AppException(403, "ACCESS_DENIED", 'You dont have permission to delete participants in this chat.')
+
+    targets = await chat_services.get_participants_by_ids(db, chat_id, data.user_ids)
+    actor_rank = chat_services.role_rank(chat_p.role)
+
+    for target in targets:
+        if target.user_id == user.id:
+            raise AppException(400, "INVALID_TARGET", 'Use the leave endpoint to remove yourself.')
+
+        if chat_services.role_rank(target.role) >= actor_rank:
+            raise AppException(403, "ACCESS_DENIED",
+                               'You cannot remove a participant with an equal or higher role.')
 
     await chat_services.delete_chat_participants(db, chat_id, data.user_ids)
 
@@ -137,6 +155,13 @@ async def add_participants(
 
     if chat_p is None:
         raise AppException(403, "ACCESS_DENIED", 'You dont have permission to access this chat.')
+
+    chat = await chat_services.get_chat_by_id(db, chat_id)
+    if chat is None:
+        raise AppException(404, "NOT_FOUND", "Chat doesn't exist.")
+
+    if chat.chat_type == ChatType.PRIVATE:
+        raise AppException(400, "INVALID_CHAT_TYPE", 'Participants of a private chat cannot be changed.')
 
     if chat_p.role == ParticipantRole.MEMBER:
         raise AppException(403, "ACCESS_DENIED", 'You dont have permission to add participants to this chat.')
