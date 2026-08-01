@@ -9,11 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.exceptions import AppException
-from app.domains.chats.models import ChatParticipant, Chat, ChatType
+from app.domains.chats.models import ChatParticipant, Chat, ChatType, ParticipantRole
 from app.domains.crypto.models import CryptoMode
+from app.domains.crypto.reference.channel import verify_channel_post
 from app.domains.crypto.reference.envelope import verify_envelope_signature
 from app.domains.crypto.reference.primitives import b64u_decode
-from app.domains.crypto.services import epoch_service
+from app.domains.crypto.services import epoch_service, identity_service
 from app.domains.messages.schemas.messages_schemas import (
     ContentFormat,
     MessageCreateRequest,
@@ -164,6 +165,47 @@ async def _validate_envelope(db, chat, user_id, settings, envelope) -> None:
         )
 
 
+async def _validate_channel_post(db, chat, user_id, post) -> None:
+    """Gate channel posting on role, and verify the post signature.
+
+    Channels are broadcast: only the owner and admins may post. Verifying the signature server-side
+    means a stored post is always one the claimed author actually signed, which is the property
+    subscribers rely on given the content itself is not confidential.
+    """
+    participant = await is_user_in_chat(db, user_id, chat.id)
+    if participant is None or participant.role == ParticipantRole.MEMBER:
+        raise AppException(
+            403, "CHANNEL_POST_FORBIDDEN",
+            "Only the channel owner and admins can post.",
+        )
+
+    if post is None:
+        raise AppException(
+            400, "CHANNEL_POST_REQUIRED",
+            "Channel messages must be sent as a signed channel_post.",
+        )
+
+    identity = await identity_service.get_active_signing_key(db, user_id)
+    if identity is None:
+        raise AppException(
+            400, "NO_IDENTITY_KEY",
+            "Publish an identity key before posting; channel posts must be signed.",
+        )
+
+    if not verify_channel_post(
+            signing_public=b64u_decode(identity.signing_public_key),
+            signature=post.sig,
+            chat_id=chat.id,
+            sender_id=user_id,
+            post_id=post.post_id,
+            content=post.content,
+    ):
+        raise AppException(
+            400, "INVALID_POST_SIGNATURE",
+            "The post signature does not verify against your identity key.",
+        )
+
+
 async def send_message(
         db: AsyncSession,
         mongo_db: AsyncIOMotorDatabase,
@@ -177,10 +219,13 @@ async def send_message(
         settings is not None and settings.crypto_mode is CryptoMode.SENDER_KEYS_V1
     )
 
-    if is_encrypted_chat:
+    if chat.chat_type == ChatType.CHANNEL:
+        await _validate_channel_post(db, chat, user_id, message_in.channel_post)
+        content_format = ContentFormat.CHANNEL_SIGNED_V1
+    elif is_encrypted_chat:
         await _validate_envelope(db, chat, user_id, settings, message_in.envelope)
-
-    if message_in.envelope is not None:
+        content_format = ContentFormat.SENDER_KEYS_V1
+    elif message_in.envelope is not None:
         content_format = ContentFormat.SENDER_KEYS_V1
     elif chat.chat_type == ChatType.PRIVATE:
         content_format = ContentFormat.LEGACY_RSA

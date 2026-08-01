@@ -140,6 +140,25 @@ async def get_active_keys_for_users(
     return list((await db.execute(stmt)).scalars().all())
 
 
+async def get_active_signing_key(db: AsyncSession, user_id: uuid.UUID) -> UserIdentityKey | None:
+    """The user's active identity key, for verifying something they signed.
+
+    Returns one key. Under the current single-device model that is unambiguous; multi-device would
+    need the caller to say which device signed.
+    """
+    stmt = (
+        select(UserIdentityKey)
+        .join(UserDevice, UserDevice.id == UserIdentityKey.device_id)
+        .where(
+            UserIdentityKey.user_id == user_id,
+            UserIdentityKey.is_active.is_(True),
+            UserDevice.is_active.is_(True),
+        )
+        .limit(1)
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
 async def get_own_identities(db: AsyncSession, user_id: uuid.UUID) -> list[UserIdentityKey]:
     stmt = select(UserIdentityKey).where(
         UserIdentityKey.user_id == user_id,

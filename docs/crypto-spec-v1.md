@@ -7,8 +7,7 @@ tests decide.**
 
 Keywords MUST / MUST NOT / SHOULD are used in the RFC 2119 sense.
 
-> **Status.** Identity (§2), ratchet (§3), message envelope (§4), key epochs and grants (§5) and
-> rotation (§5.2) are frozen and implemented. Channels (§7) are not yet built.
+> **Status.** All sections are frozen and implemented.
 
 ---
 
@@ -290,7 +289,44 @@ message signatures.
 
 ---
 
-## 6. What this does not protect
+## 6. Channels — signed, not encrypted
+
+Channels are deliberately **outside** the end-to-end trust boundary. This is a reasoned scoping
+decision, and the reasoning belongs in the write-up rather than being hidden:
+
+1. **Confidentiality is unachievable for open broadcast.** A channel anyone may subscribe to hands
+   its content to any adversary who subscribes. Encryption does not change that.
+2. **Sender keys do not survive the scale.** Grants cost O(N) per rotation, wrapped on a single
+   client, and every unsubscribe forces a rotation. At a few thousand subscribers with normal churn
+   a client cannot finish wrapping before the next epoch opens — the system thrashes and never
+   converges. The crossover is roughly N ≈ 500–1000, which is why Signal caps groups at 1000 and
+   WhatsApp at 1024.
+3. **Deployed messengers agree.** Telegram channels and WhatsApp Channels are both server-readable.
+
+**Integrity is not meaningless, and is preserved.** Every post is signed:
+
+```
+payload = "NS-v1-post" || chat_id(16) || sender_id(16) || post_id(16) || SHA-256(content)
+sig     = Ed25519(identity_signing_private, payload)
+```
+
+`chat_id` and `sender_id` stop a post being relocated or reattributed; `post_id` makes each
+signature unique so a captured `(content, signature)` pair cannot be replayed as a second post;
+the content hash makes it tamper-evident.
+
+Cost is O(1) per post regardless of subscriber count, with no key distribution whatsoever.
+
+Posting is restricted to OWNER and ADMIN. The server verifies the signature on publish, so a stored
+post is always one its claimed author actually signed. `POST /crypto/chats/{id}/enable` refuses
+channels outright rather than silently applying a scheme that cannot scale.
+
+> The distinction worth stating plainly: **for public broadcast, confidentiality is meaningless but
+> authenticity is valuable.** Securing what can actually be secured is a stronger position than
+> claiming end-to-end encryption everywhere.
+
+---
+
+## 7. What this does not protect
 
 State plainly; do not overclaim.
 

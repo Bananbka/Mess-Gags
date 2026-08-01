@@ -9,7 +9,7 @@ from app.core.exceptions import AppException
 from app.core.responses import SuccessResponse
 from app.domains.chats.models import ParticipantRole, ChatType
 from app.domains.chats.schemas.chat_schemas import ChatResponse, PrivateChatCreateRequest, GroupChatCreateRequest, \
-    UserListRequest, ChatParticipantResponse, ChangeRoleRequest
+    UserListRequest, ChatParticipantResponse, ChangeRoleRequest, ChannelCreateRequest
 from app.domains.chats.services import chat_services
 from app.domains.messages.schemas.messages_schemas import MessageResponse
 from app.domains.messages.services import messages_service
@@ -60,6 +60,25 @@ async def create_group_chat(
     chat = await chat_services.create_group_chat(db, user.id, data)
 
     await redis_service.send_chat_created_message(redis, chat, user.id, data.participant_ids)
+
+    return SuccessResponse(data=chat)
+
+
+@router.post('/channel', response_model=SuccessResponse[ChatResponse])
+async def create_channel(
+        data: ChannelCreateRequest,
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+        redis: Redis = Depends(get_redis),
+):
+    """Create a broadcast channel.
+
+    Channels are signed but not encrypted. See the wire spec: confidentiality is unachievable for
+    open-enrollment broadcast, and sender-key distribution does not scale to channel membership.
+    """
+    chat = await chat_services.create_channel(db, user.id, data)
+
+    await redis_service.send_chat_created_message(redis, chat, user.id, data.subscriber_ids)
 
     return SuccessResponse(data=chat)
 

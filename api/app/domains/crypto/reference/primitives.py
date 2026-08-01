@@ -16,6 +16,7 @@ DS_CHAIN = b"NS-v1-chain"          # HKDF info when advancing the chain
 DS_GRANT = b"NS-v1-grant"          # AAD for a wrapped sender key
 DS_SENDER_KEY = b"NS-v1-skdm"      # sender key distribution signature
 DS_MEMBER_SET = b"NS-v1-memberset"  # epoch membership hash
+DS_CHANNEL_POST = b"NS-v1-post"    # signed (but not encrypted) channel post
 DS_FINGERPRINT = b"NS-v1-fingerprint"
 
 VERSION = 1

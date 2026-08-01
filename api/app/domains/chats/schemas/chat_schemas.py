@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.domains.chats.models import ParticipantRole, ChatType
 
@@ -42,6 +42,20 @@ class ChatResponse(BaseModel):
     participants: list[ChatParticipantResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ChannelCreateRequest(BaseModel):
+    """Create a broadcast channel.
+
+    Channels are authenticated but not encrypted: posts carry an Ed25519 signature so subscribers
+    can verify authorship, while the content itself is readable by the server. Confidentiality is
+    unachievable for open-enrollment broadcast anyway, and sender-key distribution does not scale
+    to channel-sized membership.
+    """
+    title: str = Field(..., min_length=1, max_length=255)
+    description: str | None = None
+    avatar_url: str | None = None
+    subscriber_ids: list[uuid.UUID] = []
 
 
 class UserListRequest(BaseModel):

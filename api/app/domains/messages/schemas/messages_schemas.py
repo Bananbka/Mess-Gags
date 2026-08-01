@@ -40,13 +40,19 @@ class ContentFormat(str, enum.Enum):
     was computed independently on the send and read paths and the two disagreed — the send path
     silently dropped it and always reported True.
     """
-    LEGACY_PLAINTEXT = "legacy_plaintext"   # group/channel messages from before encryption
-    LEGACY_RSA = "legacy_rsa"               # private chats under the old RSA scheme
-    SENDER_KEYS_V1 = "sender_keys_v1"       # current: envelope + sender-key ratchet
+    LEGACY_PLAINTEXT = "legacy_plaintext"       # group/channel messages from before encryption
+    LEGACY_RSA = "legacy_rsa"                   # private chats under the old RSA scheme
+    SENDER_KEYS_V1 = "sender_keys_v1"           # current: envelope + sender-key ratchet
+    CHANNEL_SIGNED_V1 = "channel_signed_v1"     # broadcast: authenticated, deliberately readable
 
     @property
     def is_encrypted(self) -> bool:
-        return self is not ContentFormat.LEGACY_PLAINTEXT
+        return self in (ContentFormat.LEGACY_RSA, ContentFormat.SENDER_KEYS_V1)
+
+    @property
+    def is_authenticated(self) -> bool:
+        """Whether the sender is cryptographically proven, independent of confidentiality."""
+        return self in (ContentFormat.SENDER_KEYS_V1, ContentFormat.CHANNEL_SIGNED_V1)
 
 
 class MessageEnvelope(BaseModel):
@@ -65,6 +71,19 @@ class MessageEnvelope(BaseModel):
     sig: str = Field(..., max_length=128)  # Ed25519, b64u
 
 
+class ChannelPost(BaseModel):
+    """A broadcast post: plaintext content plus an Ed25519 signature over it.
+
+    Not encrypted, by design — see app/domains/crypto/reference/channel.py. Subscribers verify the
+    signature to know the post genuinely came from the channel owner.
+    """
+    v: int = Field(1, ge=1)
+    alg: str = Field("ed25519-post-v1", max_length=32)
+    post_id: uuid.UUID
+    content: str = Field(..., max_length=64_000)
+    sig: str = Field(..., max_length=128)
+
+
 class MessageDocument(BaseModel):
     chat_id: uuid.UUID
     sender_id: uuid.UUID
@@ -72,6 +91,7 @@ class MessageDocument(BaseModel):
     # Exactly one of these carries the content, selected by content_format.
     encrypted_content: str | None = None
     envelope: MessageEnvelope | None = None
+    channel_post: ChannelPost | None = None
     content_format: ContentFormat = ContentFormat.LEGACY_PLAINTEXT
 
     reply_to_message_id: str | None = None
@@ -92,6 +112,7 @@ class MessageResponse(BaseModel):
 
     encrypted_content: str | None = None
     envelope: MessageEnvelope | None = None
+    channel_post: ChannelPost | None = None
     content_format: ContentFormat = ContentFormat.LEGACY_PLAINTEXT
 
     reply_to_message_id: str | None = None
@@ -114,19 +135,29 @@ class MessageResponse(BaseModel):
 
 
 class MessageCreateRequest(BaseModel):
-    """Send a message. Supply `envelope` (v1) or `encrypted_content` (legacy), never both."""
+    """Send a message.
+
+    Supply exactly one content form: `envelope` for an encrypted chat, `channel_post` for a
+    broadcast channel, or `encrypted_content` for a legacy unencrypted chat.
+    """
     chat_id: uuid.UUID
 
     encrypted_content: str | None = None
     envelope: MessageEnvelope | None = None
+    channel_post: ChannelPost | None = None
 
     reply_to_message_id: str | None = None
     attachments: list[Attachment] | None = None
 
     @model_validator(mode="after")
     def check_exactly_one_content(self):
-        if (self.envelope is None) == (self.encrypted_content is None):
-            raise ValueError("provide exactly one of 'envelope' or 'encrypted_content'")
+        supplied = [
+            f for f in (self.envelope, self.channel_post, self.encrypted_content) if f is not None
+        ]
+        if len(supplied) != 1:
+            raise ValueError(
+                "provide exactly one of 'envelope', 'channel_post' or 'encrypted_content'"
+            )
         return self
 
 

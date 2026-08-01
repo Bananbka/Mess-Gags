@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload, aliased
 from app.core.exceptions import AppException
 from app.domains.chats.models import Chat, ChatParticipant, ChatType, ParticipantRole, Contact
 from app.domains.chats.schemas.chat_schemas import GroupChatCreateRequest
-from app.domains.crypto.models import ChatKeyEpoch, EpochReason
+from app.domains.crypto.models import ChatCryptoSettings, ChatKeyEpoch, CryptoMode, EpochReason
 from app.domains.crypto.services import epoch_service
 from app.domains.users.services.user_service import get_user_by_id
 
@@ -91,6 +91,42 @@ async def create_group_chat(
     await db.execute(insert(ChatParticipant), cp_to_create)
     await db.commit()
 
+    await db.refresh(new_chat, ['participants'])
+    return new_chat
+
+
+async def create_channel(
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        data,
+) -> Chat:
+    """Create a broadcast channel.
+
+    Channels get crypto settings with mode NOT_ENCRYPTED rather than no settings row at all, so
+    the choice is explicit and auditable rather than an absence. Subscribers join as MEMBER, which
+    is the role the send path gates posting on.
+    """
+    new_chat = Chat(
+        **data.model_dump(exclude={'subscriber_ids'}),
+        chat_type=ChatType.CHANNEL,
+    )
+    db.add(new_chat)
+    await db.flush()
+
+    subscriber_ids = set(data.subscriber_ids) - {user_id}
+    participants = [
+        {"chat_id": new_chat.id, "user_id": pid, "role": ParticipantRole.MEMBER}
+        for pid in subscriber_ids
+    ]
+    participants.append(
+        {"chat_id": new_chat.id, "user_id": user_id, "role": ParticipantRole.OWNER}
+    )
+
+    await db.execute(insert(ChatParticipant), participants)
+
+    db.add(ChatCryptoSettings(chat_id=new_chat.id, crypto_mode=CryptoMode.NOT_ENCRYPTED))
+
+    await db.commit()
     await db.refresh(new_chat, ['participants'])
     return new_chat
 
