@@ -5,6 +5,7 @@ import { UserProfile } from '../models/chat.model';
 import { AuthApiService, RegisterRequest } from './auth-api.service';
 import { CryptoApiService } from './crypto-api.service';
 import { KeyStoreService, UnlockStageReporter } from './key-store.service';
+import { MessageService } from './message.service';
 import { WebSocketService } from './websocket.service';
 
 /**
@@ -44,6 +45,7 @@ export class SessionService {
     private readonly authApi = inject(AuthApiService);
     private readonly cryptoApi = inject(CryptoApiService);
     private readonly keyStore = inject(KeyStoreService);
+    private readonly messages = inject(MessageService);
     private readonly ws = inject(WebSocketService);
 
     readonly user = signal<UserProfile | null>(null);
@@ -53,19 +55,14 @@ export class SessionService {
     readonly isUnlocked = this.keyStore.isUnlocked;
 
     /**
-     * Probe the cookie session once at startup, and resume the key store if it was left unlocked.
+     * Probe the cookie session once at startup.
      *
-     * These are still two separate facts: a valid cookie with no resumable identity lands on the
-     * unlock screen, which is what happens once the stored session expires or after a sign-out.
+     * The key store is memory-only by design, so a surviving cookie lands the user on the unlock
+     * screen rather than straight into their chats. That prompt is the security measure working.
      */
     async restore(): Promise<void> {
         try {
-            const user = await firstValueFrom(this.authApi.me());
-            this.user.set(user);
-
-            if (await this.keyStore.resume(user.id)) {
-                this.ws.connect();
-            }
+            this.user.set(await firstValueFrom(this.authApi.me()));
         } catch {
             this.user.set(null);
         } finally {
@@ -140,9 +137,11 @@ export class SessionService {
             await firstValueFrom(this.authApi.logout());
         } finally {
             // Local state is cleared even if the server call fails: leaving unwrapped private keys
-            // in memory after the user asked to leave is the worse outcome.
+            // in memory after the user asked to leave is the worse outcome. Retained plaintext goes
+            // too — it would otherwise outlive the keys that produced it.
             this.ws.disconnect();
             this.keyStore.lock();
+            this.messages.forgetOpened();
             this.user.set(null);
         }
     }

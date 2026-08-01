@@ -46,6 +46,14 @@ export class MessageService {
     private readonly keyStore = inject(KeyStoreService);
 
     /**
+     * Plaintext for messages already opened this session, keyed by message id.
+     *
+     * Memory-only and never persisted: this is the decrypted content, so writing it to disk would
+     * give away exactly what the ratchet's forward secrecy is protecting.
+     */
+    private readonly opened = new Map<string, DecryptedMessage>();
+
+    /**
      * Encrypt and send.
      *
      * On EPOCH_STALE the chat re-keyed between composing and sending — usually because someone
@@ -171,7 +179,40 @@ export class MessageService {
         }
     }
 
+    /**
+     * Open one message, at most once.
+     *
+     * The ratchet is deliberately single-use: `ReceiverChain.messageKeyFor` derives a key, drops the
+     * chain key behind it, and throws for any index it has already passed. That is forward secrecy
+     * working — the key that opened a message genuinely no longer exists.
+     *
+     * So the plaintext has to be kept, because the ciphertext can never be opened a second time.
+     * Without this cache, merely re-rendering a conversation (reopening it, or paging back over
+     * messages already read live on the socket) would decrypt each message again and report `failed`
+     * with "a consumed chain index" — indistinguishable, to the reader, from tampering.
+     *
+     * `no_key` is deliberately not cached: nothing was consumed, and the whole point is that it
+     * becomes readable once the grant arrives.
+     */
     async decrypt(chatId: string, message: MessageResponse): Promise<DecryptedMessage> {
+        const cached = this.opened.get(message._id);
+        if (cached) {
+            return cached;
+        }
+
+        const result = await this.decryptOnce(chatId, message);
+        if (result.status !== 'no_key') {
+            this.opened.set(message._id, result);
+        }
+        return result;
+    }
+
+    /** Drop retained plaintext. Called when the key store closes; holding it open would outlive it. */
+    forgetOpened(): void {
+        this.opened.clear();
+    }
+
+    private async decryptOnce(chatId: string, message: MessageResponse): Promise<DecryptedMessage> {
         const base = {
             id: message._id,
             chatId: message.chat_id,
