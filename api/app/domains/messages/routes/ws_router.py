@@ -101,9 +101,10 @@ async def websocket_endpoint(websocket: WebSocket,
                         WSEventType.MESSAGE_EDITED,
                         WSEventType.MESSAGE_DELETED
                 ):
+                    # WSMessageEnvelope sets use_enum_values=True, so event_type is already a str.
                     error_envelope = WSMessageEnvelope(
                         event_type=WSEventType.ERROR,
-                        payload={"message": f"Please use HTTP endpoints for {ws_event.event_type.value}"}
+                        payload={"message": f"Please use HTTP endpoints for {ws_event.event_type}"}
                     )
                     await websocket.send_text(error_envelope.model_dump_json())
 

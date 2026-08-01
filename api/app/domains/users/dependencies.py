@@ -11,7 +11,7 @@ from starlette.websockets import WebSocket
 from app.core.config import settings
 from app.core.exceptions import AppException
 from app.domains.users.models.user import User
-from app.domains.users.services.user_service import get_user_by_username, get_user_by_id
+from app.domains.users.services.user_service import get_user_by_id
 from app.infrastructure.postgres import get_db
 from app.infrastructure.redis import get_redis
 
@@ -86,17 +86,28 @@ async def get_ws_current_user(
 
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None or payload.get("refresh"):
+        user_id: str = payload.get("sub")
+        if user_id is None or payload.get("refresh"):
             raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
     except jwt.PyJWTError:
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
-    user = await get_user_by_username(db, username)
+    try:
+        user = await get_user_by_id(db, uuid.UUID(user_id))
+    except ValueError:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+
     if user is None:
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
     if not user.is_verified:
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+
+    iat = payload.get("iat")
+    if iat:
+        logout_timestamp = await redis.get(f"force_logout:{user.id}")
+
+        if logout_timestamp and iat < int(logout_timestamp):
+            raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
     return user
