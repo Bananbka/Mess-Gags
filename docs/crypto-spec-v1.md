@@ -7,9 +7,8 @@ tests decide.**
 
 Keywords MUST / MUST NOT / SHOULD are used in the RFC 2119 sense.
 
-> **Status.** Identity (§2), ratchet (§3), message envelope (§4) and key epochs and grants (§5)
-> are frozen and implemented. Rotation triggers (§5.2) are specified but not yet wired into
-> membership changes.
+> **Status.** Identity (§2), ratchet (§3), message envelope (§4), key epochs and grants (§5) and
+> rotation (§5.2) are frozen and implemented. Channels (§7) are not yet built.
 
 ---
 
@@ -260,6 +259,34 @@ Binding `E_pub` into both the AAD and the HKDF info blocks reuse of a captured e
 
 A removed member retains everything they already held. This is unavoidable and MUST be stated in
 the UI rather than implied otherwise.
+
+Rotation is atomic with the membership change that triggered it. A removal that committed without
+its rotation would leave the departed member able to read anything sent in the interim.
+
+### 5.3 Send-path enforcement
+
+The server rejects a message that is not keyed to the live epoch:
+
+| Condition | Error |
+|---|---|
+| Chat is encrypted, plaintext supplied | `400 ENVELOPE_REQUIRED` |
+| `envelope.epoch != current_epoch` | `409 EPOCH_STALE` |
+| No distribution for `(epoch, skid)` | `409 SENDER_KEY_MISSING` |
+| Distribution belongs to another member | `403 SENDER_KEY_NOT_YOURS` |
+| Signature fails against the published chain key | `400 INVALID_MESSAGE_SIGNATURE` |
+
+Epoch equality is **strict**, with no grace window — a window is exactly the gap that lets a
+message composed before a removal land after it.
+
+### 5.4 Scheduled maintenance
+
+Periodic rotation runs daily and re-keys any chat past its rotation interval, **skipping chats with
+no traffic in the current epoch**: rotating a dormant conversation only creates epochs nobody will
+publish keys for.
+
+Grant pruning drops grants for epochs closed longer than 30 days once every recipient has fetched
+them. Distributions are never pruned — they hold the signing keys needed to verify historical
+message signatures.
 
 ---
 
