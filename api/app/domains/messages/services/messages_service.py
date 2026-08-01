@@ -10,6 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.exceptions import AppException
 from app.domains.chats.models import ChatParticipant, Chat, ChatType
+from app.domains.crypto.models import CryptoMode
+from app.domains.crypto.reference.envelope import verify_envelope_signature
+from app.domains.crypto.reference.primitives import b64u_decode
+from app.domains.crypto.services import epoch_service
 from app.domains.messages.schemas.messages_schemas import (
     ContentFormat,
     MessageCreateRequest,
@@ -108,6 +112,58 @@ def resolve_content_format(doc: dict, chat: Chat) -> ContentFormat:
     )
 
 
+async def _validate_envelope(db, chat, user_id, settings, envelope) -> None:
+    """Gate the send path on the chat's current epoch.
+
+    The server cannot read the message, but it can refuse to store one that is not keyed to the
+    live epoch or that claims a chain nobody published. Both matter after a member is removed: a
+    message accepted under the previous epoch would still be readable by them.
+    """
+    if envelope is None:
+        raise AppException(
+            400, "ENVELOPE_REQUIRED",
+            "This chat is end-to-end encrypted; send an envelope rather than plaintext.",
+        )
+
+    # Strict equality, not a grace window. A window is exactly the hole that lets an in-flight
+    # message from before a removal land after it.
+    if envelope.epoch != settings.current_epoch:
+        raise AppException(
+            409, "EPOCH_STALE",
+            "This chat has re-keyed. Fetch the current epoch, re-encrypt and retry.",
+            details={"current_epoch": settings.current_epoch, "sent_epoch": envelope.epoch},
+        )
+
+    distribution = await epoch_service.get_distribution(
+        db, chat.id, settings.current_epoch, envelope.skid
+    )
+    if distribution is None:
+        raise AppException(
+            409, "SENDER_KEY_MISSING",
+            "Publish a sender key for the current epoch before sending.",
+            details={"current_epoch": settings.current_epoch},
+        )
+
+    if distribution.sender_user_id != user_id:
+        raise AppException(
+            403, "SENDER_KEY_NOT_YOURS",
+            "That sender key belongs to another member.",
+        )
+
+    # The only integrity check available to a server that cannot read the message: prove the
+    # sender is who the envelope claims. Blocks forged-attribution injection at the source.
+    if not verify_envelope_signature(
+            envelope=envelope.model_dump(mode="json"),
+            signing_public=b64u_decode(distribution.signing_public_key),
+            chat_id=chat.id,
+            sender_id=user_id,
+    ):
+        raise AppException(
+            400, "INVALID_MESSAGE_SIGNATURE",
+            "The message signature does not verify against your published sender key.",
+        )
+
+
 async def send_message(
         db: AsyncSession,
         mongo_db: AsyncIOMotorDatabase,
@@ -115,6 +171,14 @@ async def send_message(
         message_in: MessageCreateRequest
 ) -> MessageResponse:
     chat = await get_chat_or_403(db, message_in.chat_id, user_id)
+
+    settings = await epoch_service.get_settings(db, message_in.chat_id)
+    is_encrypted_chat = (
+        settings is not None and settings.crypto_mode is CryptoMode.SENDER_KEYS_V1
+    )
+
+    if is_encrypted_chat:
+        await _validate_envelope(db, chat, user_id, settings, message_in.envelope)
 
     if message_in.envelope is not None:
         content_format = ContentFormat.SENDER_KEYS_V1
@@ -159,6 +223,14 @@ async def get_chat_messages(
     if before_id:
         message_id = objectify_id(before_id)
         query["_id"] = {"$lt": message_id}
+
+    # Floor history at the point this member joined. They hold no keys for earlier epochs, so this
+    # is not the confidentiality boundary — but without it they still receive every historical
+    # ciphertext, which leaks sender, timing, size and reply structure for the whole history.
+    participant = await is_user_in_chat(db, user_id, chat_id)
+    if participant is not None and participant.history_start_message_id:
+        floor = objectify_id(participant.history_start_message_id)
+        query["_id"] = {**query.get("_id", {}), "$gt": floor}
 
     crs = (
         collection
