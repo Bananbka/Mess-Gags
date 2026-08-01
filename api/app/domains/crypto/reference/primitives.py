@@ -13,8 +13,9 @@ DS_IDENTITY_BIND = b"NS-v1-idbind"
 DS_MESSAGE = b"NS-v1-msg"          # AAD prefix for a sealed message
 DS_MESSAGE_KEY = b"NS-v1-msgkey"   # HKDF info when deriving a message key from a chain key
 DS_CHAIN = b"NS-v1-chain"          # HKDF info when advancing the chain
-DS_GRANT = b"NS-v1-grant"
-DS_SENDER_KEY = b"NS-v1-skdm"
+DS_GRANT = b"NS-v1-grant"          # AAD for a wrapped sender key
+DS_SENDER_KEY = b"NS-v1-skdm"      # sender key distribution signature
+DS_MEMBER_SET = b"NS-v1-memberset"  # epoch membership hash
 DS_FINGERPRINT = b"NS-v1-fingerprint"
 
 VERSION = 1
