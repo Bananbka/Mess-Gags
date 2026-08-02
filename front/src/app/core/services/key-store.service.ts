@@ -11,27 +11,13 @@ import {
     WRAP_ALGORITHM,
     wrapChainKey,
 } from '../crypto/grants';
-import {
-    generateIdentity,
-    generateSignedPrekey,
-    unwrapPrivateBundle,
-    WrappedBundle,
-    wrapPrivateBundle,
-} from '../crypto/identity';
+import { generateIdentity, unwrapPrivateBundle, WrappedBundle, wrapPrivateBundle } from '../crypto/identity';
 import { b64uDecode, b64uEncode } from '../crypto/primitives';
 import { generateChainKey, ReceiverChain, SenderChain } from '../crypto/ratchet';
 import { Distribution, GrantUpload, OwnIdentity } from '../models/crypto.model';
 import { CryptoApiService } from './crypto-api.service';
 
 const DEVICE_ID_KEY = 'ns.device_id';
-
-/**
- * How old a signed prekey may get before it is replaced.
- *
- * A week, matching what `docs/crypto-spec-v1.md` §2 describes. The window bounds how much grant
- * traffic a single compromised prekey could open: only grants wrapped while it was current.
- */
-const PREKEY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface UnlockedIdentity {
     userId: string;
@@ -164,10 +150,6 @@ export class KeyStoreService {
             };
             this.isUnlocked.set(true);
 
-            // Not awaited: the prekey has no bearing on whether this session can read or send, and
-            // holding sign-in on a hygiene call would trade something the user notices for something
-            // they do not.
-            void this.rotatePrekeyIfStale(mine);
             return true;
         } catch {
             // A GCM tag failure here means the wrong password, not a corrupt bundle.
@@ -176,45 +158,25 @@ export class KeyStoreService {
     }
 
     /**
-     * Rotate the signed prekey if the published one is stale.
+     * Signed-prekey rotation is deliberately NOT performed by this client.
      *
-     * The private half is deliberately **not** retained. Grants wrap to the prekey and are unwrapped
-     * with the identity key, so nothing in this client ever needs the prekey private — keeping it
-     * would be material to lose for no gain. Rotation's value is that the previous public key stops
-     * being offered, which is what gives grants forward secrecy across rotations.
+     * The primitives exist and the server verifies the binding, but rotating here would break
+     * receiving. Senders wrap grants to `signed_prekey_public ?? identity_public_key`, while
+     * `ingestDistributions` can only unwrap with `identityPrivate` — the prekey's private half is
+     * nowhere, so publishing a prekey makes every grant addressed to this device unopenable and every
+     * message reports `no_key`.
      *
-     * Best-effort: a failure here must not block unlock.
+     * It cannot simply be kept, either. The private bundle is sealed under an Argon2id key derived
+     * from the password, and the password is not retained after unlock — so re-sealing the bundle to
+     * add a rotated prekey private would mean re-prompting on every rotation. Persisting it outside
+     * the bundle is the approach already tried and reverted for the identity keys.
+     *
+     * Doing this properly needs the bundle to carry `prekey_private` from the start, generated at
+     * registration alongside the identity, with rotation deferred until there is somewhere to put the
+     * new private half. Until then the identity key is the grant recipient and forward secrecy across
+     * prekey rotations is simply not claimed.
      */
-    async rotatePrekeyIfStale(published: OwnIdentity, maxAgeMs = PREKEY_MAX_AGE_MS): Promise<boolean> {
-        const identity = this.identity;
-        if (!identity) {
-            return false;
-        }
-
-        const createdAt = published.signed_prekey_created_at
-            ? new Date(published.signed_prekey_created_at).getTime()
-            : 0;
-
-        if (published.signed_prekey_public && Date.now() - createdAt < maxAgeMs) {
-            return false;
-        }
-
-        try {
-            const prekey = generateSignedPrekey(identity.signingPrivate, identity.userId, identity.deviceId);
-
-            await firstValueFrom(
-                this.cryptoApi.rotatePrekey(
-                    identity.deviceId,
-                    b64uEncode(prekey.prekeyPublic),
-                    b64uEncode(prekey.signature)
-                )
-            );
-            return true;
-        } catch {
-            // Stale-but-valid is strictly better than blocking sign-in over key hygiene.
-            return false;
-        }
-    }
+    // (no rotation method: see above)
 
     /**
      * Re-seal a published device's private bundle under a new password.
@@ -304,6 +266,10 @@ export class KeyStoreService {
         const grants: GrantUpload[] = [];
         for (const member of roster.members) {
             // Prefer the signed prekey: it gives forward secrecy for the grant once it rotates.
+            //
+            // The recipient must hold the matching private half, and this client keeps only the
+            // identity private — which is why it never publishes a prekey of its own. A prekey seen
+            // here therefore belongs to some other client that can open it.
             const recipientPublic = b64uDecode(member.signed_prekey_public ?? member.identity_public_key);
 
             const wrapped = await wrapChainKey({
