@@ -39,6 +39,34 @@
     opacity: 0.8;
 }
 
+/* The quoted message. Indented and muted so it reads as context rather than as a message of its
+   own — it is a copy of something already in the thread, not a new claim about anything. */
+.quote {
+    display: flex;
+    flex-direction: column;
+    max-width: 100%;
+    margin-bottom: 0.25rem;
+    padding: 0.25rem 0.625rem;
+    border-left: 2px solid var(--primary);
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+}
+
+.quote-author {
+    color: var(--primary);
+    font-weight: 500;
+}
+
+.quote-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &.is-missing {
+        font-style: italic;
+    }
+}
+
 .bubble {
     display: flex;
     align-items: flex-start;
@@ -87,6 +115,49 @@
     width: 1rem;
     height: 1rem;
     margin-top: 0.1875rem;
+}
+
+.attachments {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.attachment {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.5rem;
+    background: rgb(255 255 255 / 8%);
+    border-radius: var(--radius-sm);
+    color: inherit;
+    font-size: 0.75rem;
+    text-decoration: none;
+
+    &:hover {
+        background: rgb(255 255 255 / 14%);
+    }
+
+    lucide-icon {
+        flex-shrink: 0;
+        width: 0.875rem;
+        height: 0.875rem;
+    }
+}
+
+.attachment-name {
+    overflow: hidden;
+    flex: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.attachment-size {
+    flex-shrink: 0;
+    opacity: 0.7;
 }
 
 /* ── Status tones ────────────────────────────────────────────────────────────────────────────

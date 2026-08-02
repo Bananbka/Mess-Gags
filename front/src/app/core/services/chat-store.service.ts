@@ -3,7 +3,7 @@ import { computed, effect, inject, Injectable, signal, untracked } from '@angula
 import { firstValueFrom } from 'rxjs';
 
 import { Chat } from '../models/chat.model';
-import { ChatKeys, MessageResponse } from '../models/crypto.model';
+import { ChatKeys, MessageAttachment, MessageResponse } from '../models/crypto.model';
 import { ChatApiService } from './chat-api.service';
 import { CryptoApiService } from './crypto-api.service';
 import { isAlreadyEnabled, isCryptoNotEnabled, isEnableForbidden, isEncryptionRefused } from './crypto-errors';
@@ -364,6 +364,11 @@ export class ChatStoreService {
             });
 
             this.warmDirectoryFromChats(this.chats());
+
+            // Names for anyone in this chat we cannot already identify. Awaited so the first paint
+            // of the conversation has them, rather than showing ids and correcting itself.
+            await this.directory.resolveMissing(detail.participants.map((p) => p.user_id));
+
             return this.chats().find((c) => c.id === chatId) ?? detail;
         } catch {
             return this.chats().find((c) => c.id === chatId) ?? null;
@@ -444,10 +449,10 @@ export class ChatStoreService {
      * invisible on purpose. Only a failure that survives the retry surfaces, which is what
      * `docs/ui-states.md` asks for.
      */
-    async send(text: string): Promise<void> {
+    async send(text: string, replyTo?: string, attachments?: MessageAttachment[]): Promise<void> {
         const chatId = this.activeChatId();
         const chat = this.activeChat();
-        if (!chatId || !chat || !text.trim()) {
+        if (!chatId || !chat || (!text.trim() && !attachments?.length)) {
             return;
         }
 
@@ -461,7 +466,7 @@ export class ChatStoreService {
             const sent =
                 chat.chat_type === 'channel'
                     ? await this.messages_.sendChannelPost(chatId, text)
-                    : await this.messages_.sendText(chatId, text);
+                    : await this.messages_.sendText(chatId, text, replyTo, attachments);
 
             this.pending.update((p) => p.filter((item) => item.localId !== localId));
             this.rawMessages.set(sent._id, sent);
@@ -500,6 +505,18 @@ export class ChatStoreService {
 
     discardPending(localId: string): void {
         this.pending.update((p) => p.filter((entry) => entry.localId !== localId));
+    }
+
+    /** Edit one of our own messages. Only the sender may, and only in an encrypted chat. */
+    async editMessage(messageId: string, text: string): Promise<void> {
+        const chatId = this.activeChatId();
+        if (!chatId || !text.trim()) {
+            return;
+        }
+
+        const edited = await this.messages_.editText(chatId, messageId, text.trim());
+        this.messages.update((list) => list.map((m) => (m.id === edited.id ? edited : m)));
+        this.cachePreview(chatId, [edited]);
     }
 
     async deleteMessage(messageId: string): Promise<void> {

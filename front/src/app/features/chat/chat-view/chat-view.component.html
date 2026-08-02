@@ -172,7 +172,10 @@
                         [message]="item.message"
                         [showSender]="isGroupLike()"
                         [canDelete]="canDelete(item.message.senderId)"
+                        [replyTo]="quotedFor(item.message)"
                         (deleteRequested)="deleteMessage($event)"
+                        (replyRequested)="startReply($event)"
+                        (editRequested)="startEdit($event)"
                     />
                 }
 
@@ -250,7 +253,42 @@
         }
     </div>
 
+    @if (replyingTo(); as quoted) {
+        <div class="compose-context">
+            <lucide-icon [img]="replyIcon" />
+            <span class="compose-context-text">
+                <span class="compose-context-label">Replying to {{ quotedName(quoted) }}</span>
+                <span class="compose-context-body">{{ quoted.text ?? 'Unreadable message' }}</span>
+            </span>
+            <button
+                type="button"
+                class="compose-context-close"
+                aria-label="Cancel reply"
+                (click)="cancelCompose()"
+            >
+                <lucide-icon [img]="closeIcon" />
+            </button>
+        </div>
+    } @else if (editing()) {
+        <div class="compose-context">
+            <lucide-icon [img]="editIcon" />
+            <span class="compose-context-text">
+                <span class="compose-context-label">Editing your message</span>
+                <span class="compose-context-body">{{ editing()!.text }}</span>
+            </span>
+            <button
+                type="button"
+                class="compose-context-close"
+                aria-label="Cancel edit"
+                (click)="cancelCompose()"
+            >
+                <lucide-icon [img]="closeIcon" />
+            </button>
+        </div>
+    }
+
     <app-composer
+        [initialText]="editing()?.text ?? ''"
         [canSend]="canSend()"
         [blockedReason]="sendBlockedReason()"
         [rekeying]="isRekeying()"

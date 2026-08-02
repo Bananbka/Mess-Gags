@@ -154,6 +154,141 @@
 
 /* ── Members ──────────────────────────────────────────────────────────────────────────────── */
 
+.section-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.section-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--primary);
+    font-size: 0.75rem;
+    font-weight: 500;
+
+    &:hover {
+        text-decoration: underline;
+    }
+
+    lucide-icon {
+        width: 0.875rem;
+        height: 0.875rem;
+    }
+}
+
+.add-panel {
+    margin-bottom: 0.75rem;
+    padding: 0.875rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2xl);
+}
+
+.search {
+    position: relative;
+
+    lucide-icon {
+        position: absolute;
+        top: 50%;
+        left: 0.75rem;
+        width: 1rem;
+        height: 1rem;
+        color: var(--muted-foreground);
+        transform: translateY(-50%);
+        pointer-events: none;
+    }
+
+    input {
+        width: 100%;
+        padding: 0.5rem 0.875rem 0.5rem 2.25rem;
+        background: var(--background);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        color: var(--foreground);
+        font-size: 0.8125rem;
+        outline: none;
+
+        &::-webkit-search-cancel-button {
+            display: none;
+        }
+
+        &:focus {
+            border-color: rgb(163 88 249 / 60%);
+        }
+    }
+}
+
+.add-note {
+    margin: 0.625rem 0 0;
+    color: var(--muted-foreground);
+    font-size: 0.6875rem;
+    line-height: 1.5;
+}
+
+.add-result {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    width: 100%;
+    margin-top: 0.375rem;
+    padding: 0.5rem;
+    background: none;
+    border: none;
+    border-radius: var(--radius-lg);
+    text-align: left;
+
+    &:hover:not(:disabled) {
+        background: rgb(255 255 255 / 4%);
+    }
+
+    > lucide-icon {
+        width: 1rem;
+        height: 1rem;
+        color: var(--primary);
+    }
+}
+
+.add-result-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.member-role {
+    flex-shrink: 0;
+    padding: 0.25rem 0.5rem;
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--muted-foreground);
+    font-size: 0.6875rem;
+    outline: none;
+
+    &:focus {
+        border-color: rgb(163 88 249 / 60%);
+    }
+}
+
+.member-saved {
+    display: inline-flex;
+    flex-shrink: 0;
+    width: 1rem;
+    height: 1rem;
+    color: var(--ok);
+
+    lucide-icon {
+        width: 100%;
+        height: 100%;
+    }
+}
+
 .members {
     display: flex;
     flex-direction: column;

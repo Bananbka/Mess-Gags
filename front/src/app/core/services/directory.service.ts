@@ -108,6 +108,29 @@ export class DirectoryService {
         this.remember({ userId, name: title, username: null, avatarUrl, resolved: true });
     }
 
+    /**
+     * Resolve ids we do not already know, in one request.
+     *
+     * `POST /users/batch` is the only endpoint keyed by user id, so this is what lets a group member
+     * who is not a contact show a name instead of a truncated uuid. Already-known ids are filtered
+     * out first: contacts carry a user-set alias, and a batch lookup would overwrite it with the
+     * global full name.
+     */
+    async resolveMissing(userIds: readonly string[]): Promise<void> {
+        const known = this.known();
+        const missing = [...new Set(userIds)].filter((id) => !known.has(id));
+
+        if (missing.length === 0) {
+            return;
+        }
+
+        try {
+            this.rememberSearchResults(await firstValueFrom(this.chatApi.getUsersBatch(missing)));
+        } catch {
+            // Placeholder labels remain. Not worth failing a render over.
+        }
+    }
+
     lookup(userId: string): DisplayIdentity {
         return (
             this.known().get(userId) ?? {

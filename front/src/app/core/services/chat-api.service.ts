@@ -4,8 +4,8 @@ import { map, Observable } from 'rxjs';
 
 import { MessageEnvelope } from '../crypto/envelope';
 import { SuccessResponse } from '../models/api.model';
-import { Chat, UserSearchResult } from '../models/chat.model';
-import { ChannelPostPayload, MessageResponse } from '../models/crypto.model';
+import { Chat, ChatParticipant, ParticipantRole, UserSearchResult } from '../models/chat.model';
+import { ChannelPostPayload, MessageAttachment, MessageResponse } from '../models/crypto.model';
 import { ConfigService } from './config.service';
 
 @Injectable({ providedIn: 'root' })
@@ -83,14 +83,32 @@ export class ChatApiService {
     }
 
     /** Send a sealed message into an encrypted chat. */
-    sendEnvelope(chatId: string, envelope: MessageEnvelope, replyTo?: string): Observable<MessageResponse> {
+    sendEnvelope(
+        chatId: string,
+        envelope: MessageEnvelope,
+        replyTo?: string,
+        attachments?: MessageAttachment[]
+    ): Observable<MessageResponse> {
         return this.http
             .post<SuccessResponse<MessageResponse>>(this.messagesUrl, {
                 chat_id: chatId,
                 envelope,
                 reply_to_message_id: replyTo ?? null,
+                attachments: attachments?.length ? attachments : null,
             })
             .pipe(map((r) => r.data));
+    }
+
+    /**
+     * Where to fetch an attachment.
+     *
+     * Not the URL the upload returned: that points straight at MinIO, and the message bucket is
+     * private with no anonymous read. The API has to authorise the fetch, so the object key is
+     * re-addressed through it.
+     */
+    attachmentUrl(chatId: string, storedUrl: string): string {
+        const objectKey = storedUrl.split('/').pop() ?? '';
+        return `${this.configService.apiUrl}files/attachments/${chatId}/${objectKey}`;
     }
 
     /** Send a signed broadcast post. Channels are authenticated but not confidential. */
@@ -102,6 +120,31 @@ export class ChatApiService {
 
     deleteMessage(messageId: string): Observable<unknown> {
         return this.http.delete<SuccessResponse<unknown>>(`${this.messagesUrl}${messageId}`).pipe(map((r) => r.data));
+    }
+
+    /** Resolve user ids to display names. The only endpoint keyed by id. */
+    getUsersBatch(userIds: string[]): Observable<UserSearchResult[]> {
+        return this.http
+            .post<SuccessResponse<UserSearchResult[]>>(`${this.configService.apiUrl}users/batch`, {
+                user_ids: userIds,
+            })
+            .pipe(map((r) => r.data));
+    }
+
+    changeRole(chatId: string, userId: string, role: ParticipantRole): Observable<ChatParticipant> {
+        return this.http
+            .post<SuccessResponse<ChatParticipant>>(`${this.chatsUrl}${chatId}/change-role`, {
+                user_id: userId,
+                role,
+            })
+            .pipe(map((r) => r.data));
+    }
+
+    /** Edit a message. The envelope must carry a FRESH chain index; reuse is rejected. */
+    editMessage(messageId: string, envelope: MessageEnvelope): Observable<MessageResponse> {
+        return this.http
+            .put<SuccessResponse<MessageResponse>>(`${this.messagesUrl}${messageId}`, { envelope })
+            .pipe(map((r) => r.data));
     }
 
     searchUsers(query: string, limit = 10): Observable<UserSearchResult[]> {

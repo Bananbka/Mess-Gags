@@ -115,7 +115,8 @@
                 "src/styles"
               ]
             },
-            "scripts": []
+            "scripts": [],
+            "karmaConfig": "karma.conf.cjs"
           }
         }
       }

@@ -64,6 +64,53 @@
     @include ui.icon-button(2.25rem);
 
     margin-bottom: 0.125rem;
+    cursor: pointer;
+
+    &:has(input:disabled) {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+}
+
+.staged {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    margin-bottom: 0.5rem;
+}
+
+.staged-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.625rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+
+    lucide-icon {
+        width: 0.75rem;
+        height: 0.75rem;
+    }
+
+    button {
+        padding: 0;
+        background: none;
+        border: none;
+        color: var(--muted-foreground);
+        font-size: 0.875rem;
+        line-height: 1;
+
+        &:hover {
+            color: var(--danger);
+        }
+    }
+
+    &.is-busy {
+        font-style: italic;
+    }
 }
 
 .input {

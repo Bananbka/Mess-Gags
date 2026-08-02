@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { signChannelPost, verifyChannelPost } from '../crypto/channel';
 import { openMessage, sealMessage } from '../crypto/envelope';
 import { b64uDecode, fromUtf8, utf8 } from '../crypto/primitives';
-import { ChatKeys, MessageResponse } from '../models/crypto.model';
+import { ChatKeys, MessageAttachment, MessageResponse } from '../models/crypto.model';
 import { ChatApiService } from './chat-api.service';
 import { CryptoApiService } from './crypto-api.service';
 import { isCryptoNotEnabled } from './crypto-errors';
@@ -29,6 +29,9 @@ export interface DecryptedMessage {
     text: string | null;
     status: DecryptStatus;
     isEdited: boolean;
+    /** The message this one answers, if any. Server-persisted all along; only the UI was missing. */
+    replyToId: string | null;
+    attachments: MessageAttachment[];
     /** True only when a signature was checked and passed. */
     senderVerified: boolean;
 }
@@ -61,11 +64,16 @@ export class MessageService {
      * would be readable by whoever just departed. So we discard the cached chain, mint a fresh one
      * for the new epoch, and re-encrypt from plaintext.
      */
-    async sendText(chatId: string, text: string, replyTo?: string): Promise<MessageResponse> {
+    async sendText(
+        chatId: string,
+        text: string,
+        replyTo?: string,
+        attachments?: MessageAttachment[]
+    ): Promise<MessageResponse> {
         const keys = await firstValueFrom(this.cryptoApi.getChatKeys(chatId));
 
         try {
-            return await this.sealAndSend(chatId, keys.current_epoch, text, replyTo);
+            return await this.sealAndSend(chatId, keys.current_epoch, text, replyTo, attachments);
         } catch (error) {
             if (!this.isEpochStale(error)) {
                 throw error;
@@ -75,11 +83,17 @@ export class MessageService {
                 this.epochFromError(error) ?? (await firstValueFrom(this.cryptoApi.getChatKeys(chatId))).current_epoch;
 
             this.keyStore.invalidateSenderChain(chatId, keys.current_epoch);
-            return this.sealAndSend(chatId, currentEpoch, text, replyTo);
+            return this.sealAndSend(chatId, currentEpoch, text, replyTo, attachments);
         }
     }
 
-    private async sealAndSend(chatId: string, epoch: number, text: string, replyTo?: string): Promise<MessageResponse> {
+    private async sealAndSend(
+        chatId: string,
+        epoch: number,
+        text: string,
+        replyTo?: string,
+        attachments?: MessageAttachment[]
+    ): Promise<MessageResponse> {
         const identity = this.keyStore.currentIdentity;
         if (!identity) {
             throw new Error('key store is locked');
@@ -100,7 +114,44 @@ export class MessageService {
             plaintext: utf8(text),
         });
 
-        return firstValueFrom(this.chatApi.sendEnvelope(chatId, envelope, replyTo));
+        return firstValueFrom(this.chatApi.sendEnvelope(chatId, envelope, replyTo, attachments));
+    }
+
+    /**
+     * Edit a message, sealing the replacement under a **fresh** chain index.
+     *
+     * Never re-seal at the original index. The message key for an index is derived once, so reusing
+     * it would repeat a (key, nonce) pair under AES-GCM — which leaks the XOR of both plaintexts and
+     * can expose the authentication subkey. The server enforces `idx > stored idx` for exactly that
+     * reason; taking the next index from our own sending chain satisfies it naturally.
+     */
+    async editText(chatId: string, messageId: string, text: string): Promise<DecryptedMessage> {
+        const keys = await firstValueFrom(this.cryptoApi.getChatKeys(chatId));
+        const identity = this.keyStore.currentIdentity;
+        if (!identity) {
+            throw new Error('key store is locked');
+        }
+
+        const own = await this.keyStore.ensureSenderChain(chatId, keys.current_epoch);
+        const { key, nonce, index } = own.chain.nextMessageKey();
+
+        const envelope = await sealMessage({
+            messageKey: key,
+            nonce,
+            signingPrivate: own.chainSigningPrivate,
+            chatId,
+            epoch: keys.current_epoch,
+            senderId: identity.userId,
+            senderKeyId: own.senderKeyId,
+            chainIndex: index,
+            plaintext: utf8(text),
+        });
+
+        const updated = await firstValueFrom(this.chatApi.editMessage(messageId, envelope));
+
+        // The stored plaintext is now the previous version; replace rather than leave it stale.
+        this.opened.delete(messageId);
+        return this.recordOutgoing(updated, text);
     }
 
     /** Post to a channel: signed with the identity key, not encrypted. */
@@ -249,6 +300,8 @@ export class MessageService {
             senderId: sent.sender_id,
             createdAt: sent.created_at,
             isEdited: sent.is_edited,
+            replyToId: sent.reply_to_message_id,
+            attachments: sent.attachments ?? [],
             text: plaintext,
             status: sent.content_format === 'channel_signed_v1' ? 'plaintext' : 'ok',
             // We signed it ourselves, so authorship is known rather than merely checked.
@@ -266,6 +319,8 @@ export class MessageService {
             senderId: message.sender_id,
             createdAt: message.created_at,
             isEdited: message.is_edited,
+            replyToId: message.reply_to_message_id,
+            attachments: message.attachments ?? [],
         };
 
         if (message.content_format === 'channel_signed_v1' && message.channel_post) {

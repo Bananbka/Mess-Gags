@@ -19,13 +19,18 @@ import {
     Lock,
     LucideAngularModule,
     LucideIconData,
+    Paperclip,
+    Pencil,
     RefreshCw,
+    Reply,
     ShieldAlert,
     ShieldCheck,
     ShieldOff,
     Trash2,
 } from 'lucide-angular';
 
+import { MessageAttachment } from '../../../core/models/crypto.model';
+import { ChatApiService } from '../../../core/services/chat-api.service';
 import { DirectoryService } from '../../../core/services/directory.service';
 import { DecryptedMessage, DecryptStatus } from '../../../core/services/message.service';
 import { AvatarComponent } from '../../../shared/ui/avatar/avatar.component';
@@ -119,6 +124,7 @@ const STATUS_VIEWS: Record<DecryptStatus, StatusView> = {
 })
 export class MessageBubbleComponent {
     private readonly directory = inject(DirectoryService);
+    private readonly chatApi = inject(ChatApiService);
     private readonly destroyRef = inject(DestroyRef);
 
     readonly message = input.required<DecryptedMessage>();
@@ -135,6 +141,19 @@ export class MessageBubbleComponent {
     readonly delivery = input<'sent' | 'sending' | 'failed'>('sent');
 
     readonly deleteRequested = output<string>();
+    readonly editRequested = output<DecryptedMessage>();
+    readonly replyRequested = output<DecryptedMessage>();
+
+    /** The message this one answers, if it is on screen. */
+    readonly replyTo = input<DecryptedMessage | null>(null);
+
+    /**
+     * Only our own readable messages can be edited.
+     *
+     * An edit re-seals the content under a fresh chain index, which means composing new ciphertext —
+     * impossible for a message we could not open, and meaningless for a channel post or a legacy one.
+     */
+    readonly canEdit = computed(() => this.isOwn() && this.message().status === 'ok');
 
     /** True while a freshly seen `no_key` is still within its grace period. */
     private readonly settling = signal(false);
@@ -200,4 +219,30 @@ export class MessageBubbleComponent {
     readonly shieldCheckIcon = ShieldCheck;
     readonly shieldOffIcon = ShieldOff;
     readonly trashIcon = Trash2;
+    readonly replyIcon = Reply;
+    readonly editIcon = Pencil;
+    readonly paperclipIcon = Paperclip;
+
+    downloadUrl(file: MessageAttachment): string {
+        return this.chatApi.attachmentUrl(this.message().chatId, file.url);
+    }
+
+    readableSize(bytes: number): string {
+        if (bytes < 1024) {
+            return `${bytes} B`;
+        }
+        if (bytes < 1024 * 1024) {
+            return `${Math.round(bytes / 1024)} KB`;
+        }
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    /** Who wrote the quoted message, resolved the same way any other sender is. */
+    readonly quotedAuthor = computed(() => {
+        const quoted = this.replyTo();
+        if (!quoted) {
+            return '';
+        }
+        return this.directory.isMe(quoted.senderId) ? 'You' : this.directory.lookup(quoted.senderId).name;
+    });
 }

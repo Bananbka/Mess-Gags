@@ -102,7 +102,62 @@
         }
 
         <section class="group">
-            <p class="section">{{ isChannel() ? 'Subscribers' : 'Members' }} · {{ members().length }}</p>
+            <div class="section-row">
+                <p class="section">{{ isChannel() ? 'Subscribers' : 'Members' }} · {{ members().length }}</p>
+                @if (canManage() && !isPrivate()) {
+                    <button
+                        type="button"
+                        class="section-action"
+                        (click)="addOpen.set(!addOpen())"
+                    >
+                        <lucide-icon [img]="userPlusIcon" />
+                        Add
+                    </button>
+                }
+            </div>
+
+            @if (addOpen()) {
+                <div class="add-panel">
+                    <div class="search">
+                        <lucide-icon [img]="searchIcon" />
+                        <input
+                            type="search"
+                            placeholder="Search people by username…"
+                            aria-label="Search people to add"
+                            [value]="addQuery()"
+                            (input)="searchPeople($any($event.target).value)"
+                        />
+                    </div>
+
+                    <!-- Adding a member rotates the key epoch, so this is not a cosmetic change:
+                         everyone re-mints a chain and the joiner is covered only by the new one. -->
+                    <p class="add-note">
+                        Adding someone rotates this chat's keys. They will be able to read messages sent from now on,
+                        but not what came before.
+                    </p>
+
+                    @for (person of addResults(); track person.id) {
+                        <button
+                            type="button"
+                            class="add-result"
+                            [disabled]="busy()"
+                            (click)="addParticipant(person)"
+                        >
+                            <app-avatar
+                                size="sm"
+                                [name]="person.full_name"
+                                [seed]="person.id"
+                                [imageUrl]="person.avatar_url"
+                            />
+                            <span class="add-result-text">
+                                <span class="member-name">{{ person.full_name }}</span>
+                                <span class="member-sub">&#64;{{ person.username }}</span>
+                            </span>
+                            <lucide-icon [img]="userPlusIcon" />
+                        </button>
+                    }
+                </div>
+            }
 
             <ul class="members">
                 @for (member of members(); track member.userId) {
@@ -151,12 +206,48 @@
                             </span>
                         </span>
 
+                        @if (!member.isMe && !contacted().has(member.userId)) {
+                            <button
+                                type="button"
+                                class="member-action"
+                                [disabled]="busy()"
+                                [attr.aria-label]="'Save ' + member.name + ' as a contact'"
+                                title="Save as contact"
+                                (click)="addContact(member)"
+                            >
+                                <lucide-icon [img]="bookmarkIcon" />
+                            </button>
+                        } @else if (contacted().has(member.userId)) {
+                            <span
+                                class="member-saved"
+                                title="Saved as a contact"
+                            >
+                                <lucide-icon [img]="checkIcon" />
+                            </span>
+                        }
+
+                        @if (canChangeRole(member)) {
+                            <!-- Only admin and member. Ownership cannot be transferred here, so
+                                 offering it would mean showing a control the server always rejects. -->
+                            <select
+                                class="member-role"
+                                [disabled]="busy()"
+                                [attr.aria-label]="'Role for ' + member.name"
+                                [value]="member.role"
+                                (change)="setRole(member.userId, $any($event.target).value)"
+                            >
+                                <option value="admin">Admin</option>
+                                <option value="member">Member</option>
+                            </select>
+                        }
+
                         @if (canManage() && !member.isMe && member.role !== 'owner') {
                             <button
                                 type="button"
                                 class="member-action"
                                 [disabled]="busy()"
                                 [attr.aria-label]="'Remove ' + member.name"
+                                title="Remove from chat"
                                 (click)="removeMember(member.userId)"
                             >
                                 <lucide-icon [img]="userMinusIcon" />

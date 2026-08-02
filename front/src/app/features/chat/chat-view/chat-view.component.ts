@@ -17,7 +17,9 @@ import {
     Info,
     LucideAngularModule,
     MessageSquare,
+    Pencil,
     RefreshCw,
+    Reply,
     Shield,
     ShieldAlert,
     ShieldOff,
@@ -31,7 +33,7 @@ import { DirectoryService } from '../../../core/services/directory.service';
 import { DecryptedMessage } from '../../../core/services/message.service';
 import { SessionService } from '../../../core/services/session.service';
 import { AvatarComponent } from '../../../shared/ui/avatar/avatar.component';
-import { ComposerComponent } from '../composer/composer.component';
+import { ComposedMessage, ComposerComponent } from '../composer/composer.component';
 import { MessageBubbleComponent } from '../message-bubble/message-bubble.component';
 
 @Component({
@@ -61,6 +63,8 @@ export class ChatViewComponent {
     readonly sendBlockedReason = this.store.sendBlockedReason;
 
     readonly bannerDismissed = signal(false);
+    readonly replyingTo = signal<DecryptedMessage | null>(null);
+    readonly editing = signal<DecryptedMessage | null>(null);
 
     readonly isChannel = computed(() => this.chat()?.chat_type === 'channel');
     readonly isGroupLike = computed(() => this.chat()?.chat_type !== 'private');
@@ -127,6 +131,12 @@ export class ChatViewComponent {
     readonly usersIcon = Users;
     readonly messageSquareIcon = MessageSquare;
     readonly closeIcon = X;
+    readonly replyIcon = Reply;
+    readonly editIcon = Pencil;
+
+    quotedName(message: DecryptedMessage): string {
+        return this.directory.isMe(message.senderId) ? 'yourself' : this.directory.lookup(message.senderId).name;
+    }
 
     constructor() {
         effect(() => {
@@ -195,6 +205,8 @@ export class ChatViewComponent {
             text: pending.text,
             status: 'ok',
             isEdited: false,
+            replyToId: null,
+            attachments: [],
             senderVerified: true,
         };
     }
@@ -234,9 +246,52 @@ export class ChatViewComponent {
         }
     }
 
-    async send(text: string): Promise<void> {
+    /** The message a reply quotes, if it is among the ones we have loaded and opened. */
+    quotedFor(message: DecryptedMessage): DecryptedMessage | null {
+        if (!message.replyToId) {
+            return null;
+        }
+        return (
+            this.conversation()
+                .filter((item) => item.kind === 'message')
+                .map((item) => (item as { message: DecryptedMessage }).message)
+                .find((candidate) => candidate.id === message.replyToId) ?? null
+        );
+    }
+
+    startReply(message: DecryptedMessage): void {
+        this.editing.set(null);
+        this.replyingTo.set(message);
+    }
+
+    /** Load the message back into the composer. Sending replaces it rather than posting anew. */
+    startEdit(message: DecryptedMessage): void {
+        this.replyingTo.set(null);
+        this.editing.set(message);
+    }
+
+    cancelCompose(): void {
+        this.replyingTo.set(null);
+        this.editing.set(null);
+    }
+
+    async send(composed: ComposedMessage): Promise<void> {
         this.pinToBottom = true;
-        await this.store.send(text);
+
+        const editing = this.editing();
+        const replyTo = this.replyingTo();
+        this.cancelCompose();
+
+        if (editing) {
+            try {
+                await this.store.editMessage(editing.id, composed.text);
+            } catch {
+                this.store.realtimeError.set('Could not edit that message.');
+            }
+            return;
+        }
+
+        await this.store.send(composed.text, replyTo?.id, composed.attachments);
     }
 
     onTyping(active: boolean): void {

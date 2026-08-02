@@ -300,6 +300,55 @@
     }
 }
 
+/* ── Reply / edit context above the composer ──────────────────────────────────────────────── */
+
+.compose-context {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    flex-shrink: 0;
+    padding: 0.5rem 1rem;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+
+    > lucide-icon {
+        flex-shrink: 0;
+        width: 1rem;
+        height: 1rem;
+        color: var(--primary);
+    }
+}
+
+.compose-context-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.compose-context-label {
+    color: var(--primary);
+    font-size: 0.6875rem;
+    font-weight: 500;
+}
+
+.compose-context-body {
+    overflow: hidden;
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.compose-context-close {
+    @include ui.icon-button(1.75rem);
+
+    lucide-icon {
+        width: 0.875rem;
+        height: 0.875rem;
+    }
+}
+
 /* ── A send that failed ───────────────────────────────────────────────────────────────────────
    The bubble itself is rendered by message-bubble, the same component a delivered message uses, so
    nothing about the message is styled here. Only the recovery strip below it is. */

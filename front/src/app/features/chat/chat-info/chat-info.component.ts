@@ -2,23 +2,28 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { Router, RouterLink } from '@angular/router';
 import {
     ArrowLeft,
+    BookmarkPlus,
+    Check,
     ChevronRight,
     LogOut,
     LucideAngularModule,
+    Search,
     Shield,
     ShieldAlert,
     ShieldCheck,
     ShieldOff,
     Trash2,
     UserMinus,
+    UserPlus,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 
 import { computeMemberSetHash } from '../../../core/crypto/grants';
-import { Chat, ParticipantRole } from '../../../core/models/chat.model';
+import { Chat, ParticipantRole, UserSearchResult } from '../../../core/models/chat.model';
 import { ChatRoster } from '../../../core/models/crypto.model';
 import { ChatApiService } from '../../../core/services/chat-api.service';
 import { ChatStoreService } from '../../../core/services/chat-store.service';
+import { ContactsApiService } from '../../../core/services/contacts-api.service';
 import { CryptoApiService } from '../../../core/services/crypto-api.service';
 import { DirectoryService } from '../../../core/services/directory.service';
 import { SessionService } from '../../../core/services/session.service';
@@ -46,6 +51,7 @@ interface MemberRow {
 })
 export class ChatInfoComponent {
     private readonly chatApi = inject(ChatApiService);
+    private readonly contactsApi = inject(ContactsApiService);
     private readonly cryptoApi = inject(CryptoApiService);
     private readonly directory = inject(DirectoryService);
     private readonly session = inject(SessionService);
@@ -60,6 +66,14 @@ export class ChatInfoComponent {
     readonly loading = signal(true);
     readonly error = signal<string | null>(null);
     readonly busy = signal(false);
+
+    readonly addOpen = signal(false);
+    readonly addQuery = signal('');
+    readonly addResults = signal<UserSearchResult[]>([]);
+    /** Ids saved as contacts during this visit, so the action can confirm itself. */
+    readonly contacted = signal(new Set<string>());
+
+    private addTimer: ReturnType<typeof setTimeout> | null = null;
 
     /**
      * The anti-ghost check, run here as well as before key distribution.
@@ -153,6 +167,10 @@ export class ChatInfoComponent {
     readonly logOutIcon = LogOut;
     readonly trashIcon = Trash2;
     readonly userMinusIcon = UserMinus;
+    readonly userPlusIcon = UserPlus;
+    readonly searchIcon = Search;
+    readonly bookmarkIcon = BookmarkPlus;
+    readonly checkIcon = Check;
 
     constructor() {
         effect(() => void this.load(this.chatId()));
@@ -200,6 +218,88 @@ export class ChatInfoComponent {
             this.error.set('Could not load this chat.');
         } finally {
             this.loading.set(false);
+        }
+    }
+
+    /**
+     * Only an owner may change roles, the target must not be you, and OWNER cannot be granted.
+     *
+     * All three are enforced server-side; mirroring them here is about not offering a control that
+     * would be rejected. Private chats give both participants MEMBER and no OWNER, so this is
+     * unreachable there by construction.
+     */
+    canChangeRole(member: MemberRow): boolean {
+        return this.canManage() && !member.isMe && member.role !== 'owner' && !this.isPrivate();
+    }
+
+    async setRole(userId: string, role: ParticipantRole): Promise<void> {
+        this.busy.set(true);
+        try {
+            await firstValueFrom(this.chatApi.changeRole(this.chatId(), userId, role));
+            await this.load(this.chatId());
+        } catch {
+            this.error.set('Could not change that role.');
+        } finally {
+            this.busy.set(false);
+        }
+    }
+
+    /**
+     * Save someone as a contact.
+     *
+     * Worth having beyond convenience: the contact list is one of the few id-keyed name sources, so
+     * adding one is what makes this person resolvable by name everywhere else.
+     */
+    async addContact(member: MemberRow): Promise<void> {
+        this.busy.set(true);
+        try {
+            await firstValueFrom(this.contactsApi.addContact(member.userId, member.name));
+            this.contacted.update((ids) => new Set(ids).add(member.userId));
+            await this.directory.warm();
+        } catch {
+            this.error.set('Could not add that contact.');
+        } finally {
+            this.busy.set(false);
+        }
+    }
+
+    async searchPeople(query: string): Promise<void> {
+        this.addQuery.set(query);
+
+        if (this.addTimer) {
+            clearTimeout(this.addTimer);
+        }
+        if (query.trim().length < 2) {
+            this.addResults.set([]);
+            return;
+        }
+
+        this.addTimer = setTimeout(async () => {
+            const existing = new Set(this.members().map((m) => m.userId));
+            const found = await this.directory.search(query.trim(), 20);
+            this.addResults.set(found.filter((p) => !existing.has(p.id)));
+        }, 250);
+    }
+
+    /**
+     * Add someone to the chat.
+     *
+     * Membership changes rotate the key epoch, so everyone re-mints a chain and the joiner is
+     * covered by the new one. That is why this reloads the roster rather than patching it locally.
+     */
+    async addParticipant(person: UserSearchResult): Promise<void> {
+        this.busy.set(true);
+        try {
+            await firstValueFrom(this.chatApi.addParticipants(this.chatId(), [person.id]));
+            this.addQuery.set('');
+            this.addResults.set([]);
+            this.addOpen.set(false);
+            await this.load(this.chatId());
+            await this.store.loadChats();
+        } catch {
+            this.error.set('Could not add that person.');
+        } finally {
+            this.busy.set(false);
         }
     }
 

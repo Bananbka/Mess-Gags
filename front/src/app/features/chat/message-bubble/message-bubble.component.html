@@ -26,6 +26,20 @@
         </p>
     }
 
+    <!-- The quoted message is rendered from what we already decrypted, never re-opened: the ratchet
+         is single-use, so a second read of the same index would fail. If it is not on screen, the
+         quote says so rather than inventing content. -->
+    @if (message().replyToId) {
+        <div class="quote">
+            @if (replyTo(); as quoted) {
+                <span class="quote-author">{{ quotedAuthor() }}</span>
+                <span class="quote-text">{{ quoted.text ?? 'Unreadable message' }}</span>
+            } @else {
+                <span class="quote-text is-missing">Replying to an earlier message</span>
+            }
+        </div>
+    }
+
     <div class="bubble">
         @if (view().icon; as statusIcon) {
             <lucide-icon
@@ -45,6 +59,28 @@
                  "something is wrong"; they can act on "the signature did not verify". -->
             @if (view().detail) {
                 <p class="detail">{{ view().detail }}</p>
+            }
+
+            <!-- Fetched through the API rather than from the URL the upload returned: the message
+                 bucket is private, so only an authorised request can read it. The bytes arrive
+                 encrypted — the browser saves them, it cannot open them. -->
+            @if (message().attachments.length) {
+                <ul class="attachments">
+                    @for (file of message().attachments; track file.url) {
+                        <li>
+                            <a
+                                class="attachment"
+                                [href]="downloadUrl(file)"
+                                [download]="file.name"
+                                rel="noopener"
+                            >
+                                <lucide-icon [img]="paperclipIcon" />
+                                <span class="attachment-name">{{ file.name }}</span>
+                                <span class="attachment-size">{{ readableSize(file.size) }}</span>
+                            </a>
+                        </li>
+                    }
+                </ul>
             }
         </div>
     </div>
@@ -73,11 +109,34 @@
             />
         }
 
+        <button
+            type="button"
+            class="action"
+            aria-label="Reply to this message"
+            title="Reply"
+            (click)="replyRequested.emit(message())"
+        >
+            <lucide-icon [img]="replyIcon" />
+        </button>
+
+        @if (canEdit()) {
+            <button
+                type="button"
+                class="action"
+                aria-label="Edit message"
+                title="Edit"
+                (click)="editRequested.emit(message())"
+            >
+                <lucide-icon [img]="editIcon" />
+            </button>
+        }
+
         @if (canDelete()) {
             <button
                 type="button"
                 class="action"
                 aria-label="Delete message"
+                title="Delete"
                 (click)="deleteRequested.emit(message().id)"
             >
                 <lucide-icon [img]="trashIcon" />

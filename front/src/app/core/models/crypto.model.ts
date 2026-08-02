@@ -120,6 +120,19 @@ export interface ChannelPostPayload {
     sig: string;
 }
 
+/**
+ * An uploaded file referenced by a message.
+ *
+ * The bytes are encrypted by the client before upload — the server stores an opaque blob and the
+ * `content_type` describes the original, not what is stored.
+ */
+export interface MessageAttachment {
+    url: string;
+    name: string;
+    size: number;
+    content_type: string;
+}
+
 export interface MessageResponse {
     _id: string;
     chat_id: string;
@@ -130,7 +143,7 @@ export interface MessageResponse {
     content_format: ContentFormat;
     reply_to_message_id: string | null;
     created_at: string;
-    attachments: Record<string, unknown>[] | null;
+    attachments: MessageAttachment[] | null;
     is_read: boolean;
     is_pinned: boolean;
     is_edited: boolean;

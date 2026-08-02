@@ -1,0 +1,183 @@
+import { TestBed } from '@angular/core/testing';
+import { Subject } from 'rxjs';
+
+import { Chat } from '../models/chat.model';
+import { ChatKeys, MessageResponse } from '../models/crypto.model';
+import { ChatApiService } from './chat-api.service';
+import { ChatStoreService } from './chat-store.service';
+import { CryptoApiService } from './crypto-api.service';
+import { DirectoryService } from './directory.service';
+import { DecryptedMessage, DecryptStatus, MessageService } from './message.service';
+import { SessionService } from './session.service';
+import { WebSocketService } from './websocket.service';
+
+const CHAT = 'a0000000-0000-4000-8000-000000000001';
+
+function decrypted(id: string, status: DecryptStatus): DecryptedMessage {
+    return {
+        id,
+        chatId: CHAT,
+        senderId: 'peer',
+        createdAt: '2026-01-01T00:00:00Z',
+        text: status === 'ok' || status === 'plaintext' ? 'text' : null,
+        status,
+        isEdited: false,
+        replyToId: null,
+        attachments: [],
+        senderVerified: false,
+    };
+}
+
+function chat(overrides: Partial<Chat> = {}): Chat {
+    return {
+        id: CHAT,
+        chat_type: 'group',
+        title: 'Dev Team',
+        avatar_url: null,
+        unread_count: 0,
+        last_message: null,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: null,
+        participants: [],
+        ...overrides,
+    };
+}
+
+describe('ChatStoreService', () => {
+    let store: ChatStoreService;
+
+    beforeEach(() => {
+        TestBed.configureTestingModule({
+            providers: [
+                ChatStoreService,
+                { provide: ChatApiService, useValue: jasmine.createSpyObj('ChatApiService', ['getChats', 'getChat']) },
+                {
+                    provide: CryptoApiService,
+                    useValue: jasmine.createSpyObj('CryptoApiService', ['getChatKeys', 'enableEncryption']),
+                },
+                {
+                    provide: MessageService,
+                    useValue: jasmine.createSpyObj('MessageService', ['loadMessages', 'decrypt', 'refreshGrants']),
+                },
+                {
+                    provide: DirectoryService,
+                    useValue: jasmine.createSpyObj('DirectoryService', ['resolveMissing', 'rememberPrivateChatPeer']),
+                },
+                { provide: SessionService, useValue: { user: () => null } },
+                {
+                    provide: WebSocketService,
+                    useValue: {
+                        messages: new Subject(),
+                        isConnected: () => true,
+                        sendRead: () => undefined,
+                        sendTyping: () => undefined,
+                    },
+                },
+            ],
+        });
+
+        store = TestBed.inject(ChatStoreService);
+    });
+
+    describe('conversation', () => {
+        /**
+         * Group history from before encryption was switched on stays plaintext forever; it is never
+         * retroactively sealed. The divider marks where the guarantee actually begins.
+         */
+        it('places the encryption boundary between the last plaintext and the first sealed message', () => {
+            store.chats.set([chat()]);
+            store.activeChatId.set(CHAT);
+            store.messages.set([decrypted('a', 'plaintext'), decrypted('b', 'plaintext'), decrypted('c', 'ok')]);
+
+            const kinds = store.conversation().map((item) => item.kind);
+            expect(kinds).toEqual(['message', 'message', 'encryption-boundary', 'message']);
+        });
+
+        it('emits no boundary when the whole history is encrypted', () => {
+            store.chats.set([chat()]);
+            store.activeChatId.set(CHAT);
+            store.messages.set([decrypted('a', 'ok'), decrypted('b', 'ok')]);
+
+            expect(store.conversation().some((item) => item.kind === 'encryption-boundary')).toBeFalse();
+        });
+
+        /** A channel is signed rather than encrypted throughout, so there is no boundary to mark. */
+        it('emits no boundary in a channel', () => {
+            store.chats.set([chat({ chat_type: 'channel' })]);
+            store.activeChatId.set(CHAT);
+            store.messages.set([decrypted('a', 'plaintext'), decrypted('b', 'ok')]);
+
+            expect(store.conversation().some((item) => item.kind === 'encryption-boundary')).toBeFalse();
+        });
+
+        it('shows the history floor only once there is nothing older to fetch', () => {
+            store.chats.set([chat()]);
+            store.activeChatId.set(CHAT);
+            store.chatKeys.set({
+                crypto_mode: 'sender_keys_v1',
+                history_visibility: 'joined',
+                current_epoch: 3,
+                my_join_epoch: 2,
+                epochs: [{ epoch: 1 }, { epoch: 2 }, { epoch: 3 }],
+                distributions: [],
+            } as unknown as ChatKeys);
+            store.messages.set([decrypted('a', 'ok')]);
+
+            store.hasMoreHistory.set(true);
+            expect(store.conversation().some((item) => item.kind === 'history-floor')).toBeFalse();
+
+            store.hasMoreHistory.set(false);
+            expect(store.conversation()[0].kind).toBe('history-floor');
+        });
+    });
+
+    describe('send blocking', () => {
+        /** Refusing to distribute keys to an unverifiable roster is the whole point of the check. */
+        it('blocks sending when the member set cannot be verified', () => {
+            expect(store.canSend()).toBeTrue();
+
+            store.memberVerificationError.set('roster mismatch');
+
+            expect(store.canSend()).toBeFalse();
+            expect(store.sendBlockedReason()).toContain('member set');
+        });
+
+        /** Falling back to plaintext in a chat believed encrypted is the outcome worth avoiding. */
+        it('blocks sending when encryption could not be enabled', () => {
+            store.encryptionUnavailable.set('Too many members.');
+
+            expect(store.canSend()).toBeFalse();
+            expect(store.sendBlockedReason()).toBe('Too many members.');
+        });
+    });
+
+    describe('previews', () => {
+        it('reports an unopened encrypted chat as sealed rather than blank', () => {
+            const preview = store.preview(
+                chat({ last_message: { content_format: 'sender_keys_v1' } as MessageResponse })
+            );
+
+            expect(preview.readable).toBeFalse();
+            expect(preview.text).toBe('Encrypted message');
+        });
+
+        it('reads a channel post directly, since channels are not encrypted', () => {
+            const preview = store.preview(
+                chat({
+                    chat_type: 'channel',
+                    last_message: {
+                        content_format: 'channel_signed_v1',
+                        channel_post: { content: 'Server maintenance tonight' },
+                    } as MessageResponse,
+                })
+            );
+
+            expect(preview.readable).toBeTrue();
+            expect(preview.text).toBe('Server maintenance tonight');
+        });
+
+        it('says so when a chat has no messages at all', () => {
+            expect(store.preview(chat()).text).toBe('No messages yet');
+        });
+    });
+});
