@@ -2,11 +2,15 @@ import {
     afterNextRender,
     ChangeDetectionStrategy,
     Component,
+    computed,
     DestroyRef,
+    effect,
     ElementRef,
     inject,
     input,
     output,
+    signal,
+    untracked,
     viewChild,
 } from '@angular/core';
 import { LucideAngularModule, LucideIconData } from 'lucide-angular';
@@ -41,8 +45,8 @@ const EDGE_GAP = 8;
             #menu
             class="menu"
             role="menu"
-            [style.left.px]="left"
-            [style.top.px]="top"
+            [style.left.px]="left()"
+            [style.top.px]="top()"
         >
             @for (item of items(); track item.label) {
                 <button
@@ -129,12 +133,24 @@ export class ContextMenuComponent {
 
     private readonly menu = viewChild<ElementRef<HTMLElement>>('menu');
 
-    left = 0;
-    top = 0;
+    /**
+     * Position, as signals bound in the template.
+     *
+     * Required inputs cannot be read in a constructor — doing so throws NG0950 before the component
+     * renders at all, which is how an earlier version of this managed to never appear. So the anchor
+     * is picked up in an effect, and corrected once measured.
+     */
+    private readonly offset = signal<MenuAnchor | null>(null);
+
+    readonly left = computed(() => this.offset()?.x ?? this.anchor().x);
+    readonly top = computed(() => this.offset()?.y ?? this.anchor().y);
 
     constructor() {
-        this.left = this.anchorSafe().x;
-        this.top = this.anchorSafe().y;
+        // Re-measure whenever the anchor moves, so reusing one instance for a second message works.
+        effect(() => {
+            this.anchor();
+            untracked(() => this.offset.set(null));
+        });
 
         afterNextRender(() => {
             this.keepOnScreen();
@@ -163,17 +179,11 @@ export class ContextMenuComponent {
         // Capture phase: a click on something that itself opens a menu should close this one first.
         document.addEventListener('mousedown', onPointerDown, true);
         document.addEventListener('keydown', onKeyDown);
-        // Any scroll detaches the menu from what it points at, so dismiss rather than let it drift.
-        window.addEventListener('scroll', () => this.closed.emit(), { once: true, capture: true });
 
         this.destroyRef.onDestroy(() => {
             document.removeEventListener('mousedown', onPointerDown, true);
             document.removeEventListener('keydown', onKeyDown);
         });
-    }
-
-    private anchorSafe(): MenuAnchor {
-        return this.anchor();
     }
 
     /** Flip the menu back inside the viewport when opened near an edge. */
@@ -184,13 +194,12 @@ export class ContextMenuComponent {
         }
 
         const { width, height } = element.getBoundingClientRect();
-        const anchor = this.anchorSafe();
+        const anchor = this.anchor();
 
-        this.left = Math.max(EDGE_GAP, Math.min(anchor.x, window.innerWidth - width - EDGE_GAP));
-        this.top = Math.max(EDGE_GAP, Math.min(anchor.y, window.innerHeight - height - EDGE_GAP));
-
-        element.style.left = `${this.left}px`;
-        element.style.top = `${this.top}px`;
+        this.offset.set({
+            x: Math.max(EDGE_GAP, Math.min(anchor.x, window.innerWidth - width - EDGE_GAP)),
+            y: Math.max(EDGE_GAP, Math.min(anchor.y, window.innerHeight - height - EDGE_GAP)),
+        });
     }
 
     private moveFocus(step: number): void {
