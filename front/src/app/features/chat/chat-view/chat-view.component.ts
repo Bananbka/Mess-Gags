@@ -1,5 +1,4 @@
 import {
-    AfterViewChecked,
     ChangeDetectionStrategy,
     Component,
     computed,
@@ -8,6 +7,7 @@ import {
     inject,
     input,
     signal,
+    untracked,
     viewChild,
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
@@ -41,7 +41,7 @@ import { MessageBubbleComponent } from '../message-bubble/message-bubble.compone
     styleUrl: './chat-view.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ChatViewComponent implements AfterViewChecked {
+export class ChatViewComponent {
     private readonly store = inject(ChatStoreService);
     private readonly directory = inject(DirectoryService);
     private readonly session = inject(SessionService);
@@ -111,8 +111,10 @@ export class ChatViewComponent implements AfterViewChecked {
     readonly showChannelNotice = this.isChannel;
 
     private readonly scroller = viewChild<ElementRef<HTMLElement>>('scroller');
+    /** Whether new rows should pull the view down. False once the user scrolls up to read back. */
     private pinToBottom = true;
-    private lastItemCount = 0;
+    /** Set once the opening scroll has actually landed on the newest message. */
+    private atNewest = false;
 
     readonly arrowLeftIcon = ArrowLeft;
     readonly infoIcon = Info;
@@ -132,10 +134,43 @@ export class ChatViewComponent implements AfterViewChecked {
             this.store.activeChatId.set(id);
             this.bannerDismissed.set(false);
             this.pinToBottom = true;
-            // Force the next check to count as a change, so switching to a chat that happens to have
-            // the same number of rows still scrolls to its newest message.
-            this.lastItemCount = -1;
+            this.atNewest = false;
         });
+
+        // Keep the newest message in view.
+        //
+        // An effect rather than a lifecycle hook: the scroll pane is inside an @if on the loaded
+        // chat, so the checks that run before it exists are useless, and the ones after it appears
+        // are not guaranteed to coincide with the history arriving. This fires on the signal itself.
+        effect(() => {
+            const rows = this.conversation().length;
+
+            untracked(() => {
+                if (rows > 0 && this.pinToBottom) {
+                    this.scrollToBottomAfterRender();
+                }
+            });
+        });
+    }
+
+    /**
+     * Scroll once the browser has laid the new rows out.
+     *
+     * Two frames, not one: the first runs before layout has been recalculated for the rows just
+     * rendered, so `scrollHeight` is still the old value and scrolling to it lands short.
+     */
+    private scrollToBottomAfterRender(): void {
+        requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+                const element = this.scroller()?.nativeElement;
+                if (!element) {
+                    return;
+                }
+
+                element.scrollTop = element.scrollHeight;
+                this.atNewest = true;
+            })
+        );
     }
 
     /**
@@ -175,33 +210,14 @@ export class ChatViewComponent implements AfterViewChecked {
         }
     }
 
-    ngAfterViewChecked(): void {
-        // Bail before touching the counter when there is nothing to scroll yet. The pane lives inside
-        // an @if on the loaded chat, so the first few checks run without it — and recording the count
-        // then would consume the one transition that triggers the scroll, leaving a freshly opened
-        // conversation sitting at the top of its history.
-        const element = this.scroller()?.nativeElement;
-        if (!element) {
-            return;
-        }
-
-        const count = this.conversation().length;
-        if (count === this.lastItemCount) {
-            return;
-        }
-
-        this.lastItemCount = count;
-        if (this.pinToBottom) {
-            // After layout, not during this check: scrollHeight is not final until the new rows have
-            // been laid out, and fonts settling can change it again.
-            requestAnimationFrame(() => this.scrollToBottom());
-        }
-    }
-
     /** Loading older pages must not yank the view; only stay pinned if the user already is. */
     onScroll(): void {
         const element = this.scroller()?.nativeElement;
-        if (!element) {
+
+        // Until the opening scroll has landed we are sitting at the top by accident, not by
+        // intention. Reading that as "the user scrolled up" would unpin the view and start paging
+        // in older history, which is how a freshly opened chat ends up stuck at its beginning.
+        if (!element || !this.atNewest) {
             return;
         }
 
@@ -215,13 +231,6 @@ export class ChatViewComponent implements AfterViewChecked {
                     after.scrollTop += after.scrollHeight - before;
                 }
             });
-        }
-    }
-
-    private scrollToBottom(): void {
-        const element = this.scroller()?.nativeElement;
-        if (element) {
-            element.scrollTop = element.scrollHeight;
         }
     }
 
