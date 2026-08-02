@@ -105,6 +105,9 @@ export class ChatStoreService {
     readonly typingUserIds = signal<string[]>([]);
     readonly onlineUserIds = signal<string[]>([]);
 
+    /** The last error the socket reported, if any. Cleared when a chat is opened. */
+    readonly realtimeError = signal<string | null>(null);
+
     readonly isOnline = this.ws.isConnected;
 
     /**
@@ -217,8 +220,14 @@ export class ChatStoreService {
                 case 'new_message':
                     void this.onIncomingMessage(event.chat_id, event.payload);
                     break;
+                case 'message_edited':
+                    void this.onMessageEdited(event.chat_id, event.payload);
+                    break;
                 case 'message_deleted':
                     this.onMessageDeleted(event.payload);
+                    break;
+                case 'error':
+                    this.onServerError(event.payload);
                     break;
                 case 'key_epoch_started':
                     this.onEpochStarted(event.chat_id);
@@ -284,6 +293,7 @@ export class ChatStoreService {
         this.rawMessages.clear();
         this.messages.set([]);
         this.pending.set([]);
+        this.realtimeError.set(null);
         this.chatKeys.set(null);
         this.encryptionUnavailable.set(null);
         this.memberVerificationError.set(null);
@@ -692,6 +702,36 @@ export class ChatStoreService {
     private appendDecrypted(message: DecryptedMessage): void {
         this.messages.update((list) => (list.some((m) => m.id === message.id) ? list : [...list, message]));
         this.cachePreview(message.chatId, [message]);
+    }
+
+    /**
+     * A message was edited elsewhere.
+     *
+     * The edit is sealed under a **fresh** chain index — the server rejects reuse, because repeating
+     * a message key would repeat a (key, nonce) pair. So this is a new index to open, not a re-read of
+     * one already consumed, and it must not go through the plaintext cache keyed on the old content.
+     */
+    private async onMessageEdited(chatId: string | null, payload: Record<string, unknown>): Promise<void> {
+        const raw = payload as unknown as MessageResponse;
+        if (!chatId || !raw?._id || chatId !== this.activeChatId()) {
+            return;
+        }
+
+        this.rawMessages.set(raw._id, raw);
+        this.messages_.forgetOne(raw._id);
+
+        const decrypted = await this.messages_.decrypt(chatId, raw);
+        this.messages.update((list) => list.map((m) => (m.id === decrypted.id ? decrypted : m)));
+
+        if (decrypted.status === 'no_key') {
+            this.scheduleGrantRetry(chatId);
+        }
+    }
+
+    /** The socket rejected something we sent. Surfaced rather than dropped on the floor. */
+    private onServerError(payload: Record<string, unknown>): void {
+        const message = payload['message'] ?? payload['detail'];
+        this.realtimeError.set(typeof message === 'string' ? message : 'The server rejected a realtime request.');
     }
 
     private onMessageDeleted(payload: Record<string, unknown>): void {

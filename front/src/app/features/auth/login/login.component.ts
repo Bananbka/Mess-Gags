@@ -1,8 +1,8 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { AbstractControl, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { Eye, EyeOff, LucideAngularModule } from 'lucide-angular';
+import { Eye, EyeOff, LucideAngularModule, ShieldCheck } from 'lucide-angular';
 
 import { SessionService } from '../../../core/services/session.service';
 import { applyServerErrors, setServerError } from '../../../shared/forms/server-errors';
@@ -29,8 +29,13 @@ export class LoginComponent {
         password: ['', Validators.required],
     });
 
+    /** Bound from `?reset=1` so the reset flow can explain why the keys are about to be rebuilt. */
+    readonly reset = input('');
+    readonly justReset = computed(() => this.reset() === '1');
+
     readonly eyeIcon = Eye;
     readonly eyeOffIcon = EyeOff;
+    readonly shieldCheckIcon = ShieldCheck;
 
     /**
      * Signing in only establishes the session cookie. The private bundle is a separate step, so the

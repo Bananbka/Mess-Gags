@@ -88,6 +88,11 @@ class PrekeyRotateRequest(BaseModel):
     def _v_prekey(cls, v: str) -> str:
         return _b64u_of_length(v, RAW_KEY_BYTES, "signed_prekey_public")
 
+    @field_validator("signed_prekey_signature")
+    @classmethod
+    def _v_prekey_sig(cls, v: str) -> str:
+        return _b64u_of_length(v, SIGNATURE_BYTES, "signed_prekey_signature")
+
 
 class RewrappedIdentity(BaseModel):
     """A private bundle re-wrapped under a new password, with the SAME keypair.
@@ -137,6 +142,10 @@ class OwnIdentityResponse(PublicKeyResponse):
     encrypted_private_bundle: str
     kdf_params: dict
     created_at: datetime
+    # Exposed only on the owner's own view so the client can tell when its prekey is due for
+    # rotation. Absent from PublicKeyResponse: when a peer's prekey was minted is nobody else's
+    # business, and it would leak device activity.
+    signed_prekey_created_at: datetime | None = None
 
 
 class UserKeysRequest(BaseModel):

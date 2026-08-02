@@ -21,6 +21,8 @@ export interface OwnIdentity extends PublicKey {
     encrypted_private_bundle: string;
     kdf_params: { kdf: string; m: number; t: number; p: number; salt: string; nonce: string };
     created_at: string;
+    /** Owner-only: when this device's prekey was minted, so the client knows when to rotate it. */
+    signed_prekey_created_at: string | null;
 }
 
 export interface RosterEntry {

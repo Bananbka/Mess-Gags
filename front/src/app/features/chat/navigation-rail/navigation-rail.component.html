@@ -63,6 +63,24 @@
                 <button
                     type="button"
                     role="menuitem"
+                    class="menu-item"
+                    (click)="goTo(['/settings/profile'])"
+                >
+                    <lucide-icon [img]="userIcon" />
+                    Edit profile
+                </button>
+                <button
+                    type="button"
+                    role="menuitem"
+                    class="menu-item"
+                    (click)="goTo(['/settings/password'])"
+                >
+                    <lucide-icon [img]="keyIcon" />
+                    Change password
+                </button>
+                <button
+                    type="button"
+                    role="menuitem"
                     class="menu-item is-danger"
                     (click)="signOut()"
                 >

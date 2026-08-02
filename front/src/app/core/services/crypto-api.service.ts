@@ -32,6 +32,17 @@ export class CryptoApiService {
         return this.http.get<SuccessResponse<OwnIdentity[]>>(`${this.apiUrl}identity/me`).pipe(map((r) => r.data));
     }
 
+    /** Rotate the medium-term signed prekey. Does not touch the identity key or void grants. */
+    rotatePrekey(deviceId: string, signedPrekeyPublic: string, signedPrekeySignature: string): Observable<PublicKey> {
+        return this.http
+            .put<SuccessResponse<PublicKey>>(`${this.apiUrl}identity/prekey`, {
+                device_id: deviceId,
+                signed_prekey_public: signedPrekeyPublic,
+                signed_prekey_signature: signedPrekeySignature,
+            })
+            .pipe(map((r) => r.data));
+    }
+
     getKeysBatch(userIds: string[]): Observable<PublicKey[]> {
         return this.http
             .post<SuccessResponse<PublicKey[]>>(`${this.apiUrl}keys/batch`, { user_ids: userIds })

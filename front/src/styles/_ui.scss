@@ -267,6 +267,80 @@
     }
 }
 
+/* An irreversible consequence, stated before the user commits to it. Louder than `.notice`, and
+   deliberately not styled as an error — nothing has gone wrong yet. */
+@mixin destructive-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    background: var(--danger-surface);
+    border: 1px solid var(--danger-border);
+    border-radius: var(--radius-2xl);
+
+    > lucide-icon {
+        flex-shrink: 0;
+        width: 1.125rem;
+        height: 1.125rem;
+        margin-top: 0.125rem;
+        color: var(--danger);
+    }
+
+    .warning-title {
+        margin: 0;
+        color: var(--danger-strong);
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+
+    .warning-note {
+        margin: 0.375rem 0 0;
+        color: var(--danger);
+        font-size: 0.75rem;
+        line-height: 1.6;
+    }
+}
+
+/* Back link at the top of a secondary auth screen. */
+@mixin auth-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin-bottom: 2rem;
+    color: var(--muted-foreground);
+    font-size: 0.875rem;
+    text-decoration: none;
+    transition: color 0.15s ease;
+
+    &:hover {
+        color: var(--foreground);
+    }
+
+    lucide-icon {
+        width: 1rem;
+        height: 1rem;
+    }
+}
+
+/* The round tinted icon tile above an auth heading. */
+@mixin auth-badge($tint: var(--primary)) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    margin-bottom: 1.5rem;
+    background: color-mix(in srgb, #{$tint} 15%, transparent);
+    border: 1px solid color-mix(in srgb, #{$tint} 20%, transparent);
+    border-radius: var(--radius-xl);
+    color: $tint;
+
+    lucide-icon {
+        width: 1.5rem;
+        height: 1.5rem;
+    }
+}
+
 /* Header bar shared by the full-screen secondary views. */
 @mixin screen-header {
     display: flex;

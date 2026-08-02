@@ -16,7 +16,11 @@ import { join } from 'node:path';
 
 const PY_VECTORS = `
 import json, uuid
-from app.domains.crypto.reference.identity import identity_binding_message, safety_number
+from app.domains.crypto.reference.identity import (
+    identity_binding_message,
+    prekey_binding_message,
+    safety_number,
+)
 from app.domains.crypto.reference.ratchet import derive_message_key, advance_chain
 from app.domains.crypto.reference.envelope import build_message_aad
 from app.domains.crypto.reference.grants import compute_member_set_hash, distribution_signing_payload, build_grant_aad
@@ -48,6 +52,7 @@ print(json.dumps({
     'post_payload': b64u_encode(channel_post_payload(uuid.UUID(CHAT), uuid.UUID(USER), uuid.UUID(POST),
                                                      'Release 2.0 ships on Friday.')),
     'safety_number': safety_number(k32, bytes(range(200, 232))),
+    'prekey_binding': b64u_encode(prekey_binding_message(uuid.UUID(USER), uuid.UUID(DEV), k32)),
 }))
 `;
 

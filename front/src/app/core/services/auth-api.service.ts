@@ -22,6 +22,46 @@ export interface LoginRequest {
     password: string;
 }
 
+/** Both are required: the account is found by username **and** email together, not either one. */
+export interface ForgotPasswordRequest {
+    username: string;
+    email: string;
+}
+
+/**
+ * Reset destroys the identity.
+ *
+ * There is deliberately no field for re-wrapped keys — the Argon2id bundle was sealed under the
+ * forgotten password and is unrecoverable, so the server revokes every device instead. `new_public_key`
+ * and `new_encrypted_private_key` are the legacy RSA columns, not the v1 identity.
+ */
+export interface ResetPasswordRequest {
+    username: string;
+    otp: string;
+    new_password: string;
+    new_public_key: string;
+    new_encrypted_private_key: string;
+}
+
+/** One device's private bundle, re-sealed under the new password. */
+export interface RewrappedIdentity {
+    device_id: string;
+    encrypted_private_bundle: string;
+    kdf_params: Record<string, unknown>;
+}
+
+/**
+ * Change keeps the identity, unlike reset.
+ *
+ * `rewrapped_identities` is optional to the server and unverifiable by it: omit it, or wrap it wrong,
+ * and the account is locked out with a 200 OK. Callers must always supply it.
+ */
+export interface ChangePasswordRequest {
+    old_password: string;
+    new_password: string;
+    rewrapped_identities: RewrappedIdentity[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthApiService {
     private readonly http = inject(HttpClient);
@@ -63,6 +103,18 @@ export class AuthApiService {
 
     refresh(): Observable<unknown> {
         return this.http.post<SuccessResponse<unknown>>(`${this.apiUrl}refresh`, {}).pipe(map((r) => r.data));
+    }
+
+    forgotPassword(data: ForgotPasswordRequest): Observable<unknown> {
+        return this.http.post<SuccessResponse<unknown>>(`${this.apiUrl}forgot-password`, data).pipe(map((r) => r.data));
+    }
+
+    resetPassword(data: ResetPasswordRequest): Observable<unknown> {
+        return this.http.post<SuccessResponse<unknown>>(`${this.apiUrl}reset-password`, data).pipe(map((r) => r.data));
+    }
+
+    changePassword(data: ChangePasswordRequest): Observable<unknown> {
+        return this.http.post<SuccessResponse<unknown>>(`${this.apiUrl}change-password`, data).pipe(map((r) => r.data));
     }
 
     me(): Observable<UserProfile> {

@@ -32,6 +32,7 @@ from cryptography.hazmat.primitives.hashes import SHA512, Hash
 from app.domains.crypto.reference.primitives import (
     DS_FINGERPRINT,
     DS_IDENTITY_BIND,
+    DS_PREKEY_BIND,
     b64u_decode,
     b64u_encode,
     uuid_bytes,
@@ -113,6 +114,39 @@ def verify_identity_binding(
     try:
         Ed25519PublicKey.from_public_bytes(signing_public).verify(
             signature, identity_binding_message(user_id, device_id, identity_public)
+        )
+        return True
+    except Exception:
+        return False
+
+
+def prekey_binding_message(user_id, device_id, signed_prekey_public: bytes) -> bytes:
+    """The blob the Ed25519 key signs to vouch for a medium-term signed prekey.
+
+    Its own domain separator, not DS_IDENTITY_BIND: both sign a 32-byte X25519 public key for the
+    same (user, device), so sharing a separator would let a prekey signature be replayed as an
+    identity-key binding and vice versa. User and device are bound in for the same reason they are
+    in the identity binding — a valid (key, signature) pair must not transplant onto another device.
+    """
+    return DS_PREKEY_BIND + uuid_bytes(user_id) + uuid_bytes(device_id) + signed_prekey_public
+
+
+def verify_signed_prekey(
+        user_id,
+        device_id,
+        signed_prekey_public: bytes,
+        signing_public: bytes,
+        signature: bytes,
+) -> bool:
+    """Check that the device's identity signing key vouches for this prekey.
+
+    Grants prefer the signed prekey over the identity key as the ECDH recipient, so an unverified
+    prekey would let anyone who can write to the roster substitute a key they hold — exactly the
+    substitution the signature exists to prevent.
+    """
+    try:
+        Ed25519PublicKey.from_public_bytes(signing_public).verify(
+            signature, prekey_binding_message(user_id, device_id, signed_prekey_public)
         )
         return True
     except Exception:

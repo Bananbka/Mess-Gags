@@ -225,6 +225,16 @@ export class MessageService {
     }
 
     /**
+     * Forget one message's plaintext.
+     *
+     * Needed when a message is edited: the ciphertext behind that id has changed, so the cached
+     * plaintext is now the old content and returning it would show a stale edit forever.
+     */
+    forgetOne(messageId: string): void {
+        this.opened.delete(messageId);
+    }
+
+    /**
      * Record a message we just sent, using the plaintext we already have.
      *
      * Our own message must never be run through `decrypt`. We seal with a `SenderChain` and would

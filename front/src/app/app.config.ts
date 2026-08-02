@@ -5,6 +5,7 @@ import { provideRouter, withComponentInputBinding, withInMemoryScrolling } from 
 
 import { routes } from './app.routes';
 import { credentialsInterceptor } from './core/interceptors/credentials.interceptor';
+import { refreshInterceptor } from './core/interceptors/refresh.interceptor';
 import { ConfigService } from './core/services/config.service';
 import { SessionService } from './core/services/session.service';
 
@@ -13,7 +14,9 @@ export const appConfig: ApplicationConfig = {
         provideZoneChangeDetection({ eventCoalescing: true }),
         provideRouter(routes, withComponentInputBinding(), withInMemoryScrolling({ scrollPositionRestoration: 'top' })),
         provideAnimationsAsync(),
-        provideHttpClient(withInterceptors([credentialsInterceptor])),
+        // Order matters: credentials must be attached before the refresh interceptor replays a
+        // request, or the replay would go out unauthenticated.
+        provideHttpClient(withInterceptors([credentialsInterceptor, refreshInterceptor])),
         // provideAppInitializer rather than the deprecated APP_INITIALIZER token. Config must land
         // before the session probe, since the probe needs the resolved API base URL.
         //

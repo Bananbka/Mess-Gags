@@ -70,6 +70,11 @@ class UserSearchResponse(BaseModel):
         from_attributes = True
 
 
+class UserBatchRequest(BaseModel):
+    """Resolve ids to display names. Bounded like the crypto keys batch it mirrors."""
+    user_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=512)
+
+
 class PasswordForgot(BaseModel):
     username: str
     email: EmailStr

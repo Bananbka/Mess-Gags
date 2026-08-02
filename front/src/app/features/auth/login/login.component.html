@@ -47,6 +47,16 @@
             </div>
         </div>
 
+        @if (justReset()) {
+            <p
+                class="notice"
+                role="status"
+            >
+                <lucide-icon [img]="shieldCheckIcon" />
+                <span>Your password was reset. Sign in to set up new encryption keys for this device.</span>
+            </p>
+        }
+
         @if (error()) {
             <p
                 class="error"
@@ -64,6 +74,10 @@
             {{ submitting() ? 'Signing in…' : 'Sign in' }}
         </button>
     </form>
+
+    <p class="foot">
+        <a routerLink="/forgot-password">Forgot your password?</a>
+    </p>
 
     <p class="foot">
         No account yet?

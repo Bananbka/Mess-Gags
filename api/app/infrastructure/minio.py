@@ -71,6 +71,20 @@ class MinioClient:
             file_url = f"{self.endpoint_url}/{bucket_name}/{unique_filename}"
             return file_url
 
+    async def stream_object(self, object_key: str, bucket_name: str):
+        """Open an object for reading. Yields (body_stream, content_type, content_length).
+
+        A read path is needed at all because the message bucket carries no public-read policy —
+        deliberately, since anonymous GET on ciphertext would leak size and access patterns to anyone
+        holding a URL. Authorisation therefore has to happen in the API, which means the bytes come
+        back through it rather than straight from MinIO.
+        """
+        async with self.get_client() as client:
+            response = await client.get_object(Bucket=bucket_name, Key=object_key)
+            body = await response["Body"].read()
+
+        return body, response.get("ContentType", "application/octet-stream"), len(body)
+
     async def delete_file(self, file_url: str, bucket_name) -> str:
         try:
             filename = file_url.split("/")[-1]

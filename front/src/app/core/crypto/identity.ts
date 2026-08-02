@@ -8,6 +8,7 @@ import {
     concatBytes,
     DS_FINGERPRINT,
     DS_IDENTITY_BIND,
+    DS_PREKEY_BIND,
     fromUtf8,
     utf8,
     uuidBytes,
@@ -58,6 +59,63 @@ export interface KdfParams {
  *  stops a valid (key, signature) pair being transplanted onto another identity. */
 export function identityBindingMessage(userId: string, deviceId: string, identityPublic: Uint8Array): Uint8Array {
     return concatBytes(DS_IDENTITY_BIND, uuidBytes(userId), uuidBytes(deviceId), identityPublic);
+}
+
+/**
+ * The blob the Ed25519 key signs to vouch for a medium-term signed prekey.
+ *
+ * Its own domain separator, not `DS_IDENTITY_BIND`: both sign a 32-byte X25519 public key for the
+ * same (user, device), so sharing one would let a prekey signature be replayed as an identity-key
+ * binding and vice versa.
+ */
+export function prekeyBindingMessage(userId: string, deviceId: string, signedPrekeyPublic: Uint8Array): Uint8Array {
+    return concatBytes(DS_PREKEY_BIND, uuidBytes(userId), uuidBytes(deviceId), signedPrekeyPublic);
+}
+
+export function signSignedPrekey(
+    signingPrivate: Uint8Array,
+    userId: string,
+    deviceId: string,
+    signedPrekeyPublic: Uint8Array
+): Uint8Array {
+    return ed25519.sign(prekeyBindingMessage(userId, deviceId, signedPrekeyPublic), signingPrivate);
+}
+
+/**
+ * Check that a device's identity signing key vouches for its prekey.
+ *
+ * `KeyStoreService.ensureSenderChain` prefers the signed prekey over the identity key as the ECDH
+ * recipient, so an unverified prekey would let whoever can write the roster substitute a key they
+ * hold — the exact substitution this signature exists to prevent.
+ */
+export function verifySignedPrekey(
+    userId: string,
+    deviceId: string,
+    signedPrekeyPublic: Uint8Array,
+    signingPublic: Uint8Array,
+    signature: Uint8Array
+): boolean {
+    try {
+        return ed25519.verify(signature, prekeyBindingMessage(userId, deviceId, signedPrekeyPublic), signingPublic);
+    } catch {
+        return false;
+    }
+}
+
+/** A fresh medium-term prekey plus the signature binding it to this identity. */
+export function generateSignedPrekey(
+    signingPrivate: Uint8Array,
+    userId: string,
+    deviceId: string
+): { prekeyPrivate: Uint8Array; prekeyPublic: Uint8Array; signature: Uint8Array } {
+    const prekeyPrivate = x25519.utils.randomSecretKey();
+    const prekeyPublic = x25519.getPublicKey(prekeyPrivate);
+
+    return {
+        prekeyPrivate,
+        prekeyPublic,
+        signature: signSignedPrekey(signingPrivate, userId, deviceId, prekeyPublic),
+    };
 }
 
 export function generateIdentity(userId: string, deviceId: string): IdentityBundle {

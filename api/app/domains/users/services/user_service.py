@@ -49,6 +49,17 @@ async def find_users_by_username(db: AsyncSession, username: str,
     return results.scalars().all()
 
 
+async def get_users_by_ids(db: AsyncSession, user_ids: list[uuid.UUID]) -> list[User]:
+    """Look up several users at once.
+
+    Ids that do not exist are simply absent from the result rather than raising — a caller resolving
+    a roster should not fail wholesale because one member's account was deleted.
+    """
+    stmt = select(User).where(User.id.in_(set(user_ids)))
+    results = await db.execute(stmt)
+    return list(results.scalars().all())
+
+
 async def create_user(db: AsyncSession, user_in: UserCreate) -> User | None:
     existing_user = await get_user_by_username(db, user_in.username)
     if existing_user:

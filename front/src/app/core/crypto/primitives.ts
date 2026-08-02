@@ -13,6 +13,7 @@ const encoder = new TextEncoder();
 /** Domain separators. Every signed or AEAD-bound blob starts with one, so a value produced for
  *  one purpose can never be replayed as a value for another. */
 export const DS_IDENTITY_BIND = encoder.encode('NS-v1-idbind');
+export const DS_PREKEY_BIND = encoder.encode('NS-v1-prekeybind');
 export const DS_MESSAGE = encoder.encode('NS-v1-msg');
 export const DS_MESSAGE_KEY = encoder.encode('NS-v1-msgkey');
 export const DS_CHAIN = encoder.encode('NS-v1-chain');

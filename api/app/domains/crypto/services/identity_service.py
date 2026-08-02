@@ -6,7 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppException
 from app.domains.crypto.models import UserDevice, UserIdentityKey
-from app.domains.crypto.reference.identity import safety_number, verify_identity_binding
+from app.domains.crypto.reference.identity import (
+    safety_number,
+    verify_identity_binding,
+    verify_signed_prekey,
+)
 from app.domains.crypto.reference.primitives import b64u_decode
 from app.domains.crypto.schemas.crypto_schemas import IdentityPublishRequest, PrekeyRotateRequest
 
@@ -95,6 +99,25 @@ async def rotate_prekey(
 
     if key is None or key.user_id != user_id:
         raise AppException(404, "DEVICE_NOT_FOUND", "No active identity key for this device.")
+
+    # Grants prefer the signed prekey over the identity key as the ECDH recipient, so an unchecked
+    # prekey would let anyone able to reach this endpoint swap in a key they hold and receive every
+    # subsequent sender key. Checked against the device's *existing* signing key, which this request
+    # cannot change — that is what makes the check meaningful rather than self-certifying.
+    #
+    # Only what is supplied here is verified. Rows written before this check existed hold signatures
+    # that were never verifiable, and retroactively rejecting them would lock those devices out.
+    if not verify_signed_prekey(
+            user_id=user_id,
+            device_id=data.device_id,
+            signed_prekey_public=b64u_decode(data.signed_prekey_public),
+            signing_public=b64u_decode(key.signing_public_key),
+            signature=b64u_decode(data.signed_prekey_signature),
+    ):
+        raise AppException(
+            400, "INVALID_KEY_SIGNATURE",
+            "The prekey signature does not verify against this device's identity key.",
+        )
 
     key.signed_prekey_public = data.signed_prekey_public
     key.signed_prekey_signature = data.signed_prekey_signature

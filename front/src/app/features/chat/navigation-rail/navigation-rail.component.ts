@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { Hash, LogOut, LucideAngularModule, MessageSquare, Shield, Users } from 'lucide-angular';
+import { Hash, KeyRound, LogOut, LucideAngularModule, MessageSquare, Shield, User, Users } from 'lucide-angular';
 
 import { SessionService } from '../../../core/services/session.service';
 import { AvatarComponent } from '../../../shared/ui/avatar/avatar.component';
@@ -36,6 +36,13 @@ export class NavigationRailComponent {
 
     readonly shieldIcon = Shield;
     readonly logOutIcon = LogOut;
+    readonly userIcon = User;
+    readonly keyIcon = KeyRound;
+
+    async goTo(path: string[]): Promise<void> {
+        this.menuOpen.set(false);
+        await this.router.navigate(path);
+    }
 
     async signOut(): Promise<void> {
         this.menuOpen.set(false);

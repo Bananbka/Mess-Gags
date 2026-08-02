@@ -36,6 +36,9 @@ export class DirectoryService {
     private readonly known = signal(new Map<string, DisplayIdentity>());
     private contactsLoaded = false;
 
+    /** True when the contact directory could not be loaded, so names are degraded for a reason. */
+    readonly warmFailed = signal(false);
+
     /** Pull in every id-keyed source we have. Cheap and idempotent. */
     async warm(): Promise<void> {
         const me = this.session.user();
@@ -65,8 +68,13 @@ export class DirectoryService {
                 });
             }
             this.contactsLoaded = true;
+            this.warmFailed.set(false);
         } catch {
-            // Not fatal: unresolved members simply keep their placeholder label.
+            // Non-fatal — unresolved members keep their placeholder label — but recorded rather than
+            // swallowed. This call spent a long time silently 404ing against the wrong path, and the
+            // only symptom was names quietly degrading to ids, which looks like a missing API rather
+            // than a broken request.
+            this.warmFailed.set(true);
         }
     }
 

@@ -20,11 +20,36 @@ export const routes: Routes = [
         loadComponent: () => import('./features/auth/login/login.component').then((m) => m.LoginComponent),
     },
     {
+        path: 'forgot-password',
+        canActivate: [guestGuard],
+        loadComponent: () =>
+            import('./features/auth/forgot-password/forgot-password.component').then((m) => m.ForgotPasswordComponent),
+    },
+    {
+        path: 'reset-password',
+        canActivate: [guestGuard],
+        loadComponent: () =>
+            import('./features/auth/reset-password/reset-password.component').then((m) => m.ResetPasswordComponent),
+    },
+    {
         // Signed in but sealed. Its own route because it is a distinct state, not a modal over the
         // chat list — nothing in the app works until the private bundle is open.
         path: 'unlock',
         canActivate: [unlockGuard],
         loadComponent: () => import('./features/auth/unlock/unlock.component').then((m) => m.UnlockComponent),
+    },
+    {
+        path: 'settings/profile',
+        canActivate: [authGuard],
+        loadComponent: () => import('./features/settings/profile/profile.component').then((m) => m.ProfileComponent),
+    },
+    {
+        path: 'settings/password',
+        canActivate: [authGuard],
+        loadComponent: () =>
+            import('./features/settings/change-password/change-password.component').then(
+                (m) => m.ChangePasswordComponent
+            ),
     },
     // The full-screen views come before the shell route. The shell matches on an empty path, so
     // leaving them below it would rely on the router backtracking out of a parent whose children all

@@ -1,0 +1,132 @@
+<header class="head">
+    <button
+        type="button"
+        class="back"
+        aria-label="Back"
+        (click)="close()"
+    >
+        <lucide-icon [img]="arrowLeftIcon" />
+    </button>
+    <h2>Your profile</h2>
+</header>
+
+<div class="body">
+    <form
+        [formGroup]="form"
+        (ngSubmit)="save()"
+    >
+        <div class="identity">
+            <label class="avatar-picker">
+                <app-avatar
+                    size="lg"
+                    [name]="form.controls.fullName.value || 'You'"
+                    [seed]="user()?.id ?? ''"
+                    [imageUrl]="avatarUrl()"
+                />
+                <span class="avatar-overlay">
+                    <lucide-icon [img]="cameraIcon" />
+                </span>
+                <input
+                    type="file"
+                    accept="image/*"
+                    class="sr-only"
+                    (change)="onAvatarPicked($event)"
+                />
+                <span class="sr-only">Change avatar</span>
+            </label>
+
+            <p class="identity-hint">
+                @if (uploading()) {
+                    Uploading…
+                } @else {
+                    Your avatar is stored unencrypted and is visible to anyone who can see your profile.
+                }
+            </p>
+        </div>
+
+        <div class="fields">
+            <div class="field">
+                <label for="fullName">Full name</label>
+                <input
+                    id="fullName"
+                    type="text"
+                    autocomplete="name"
+                    formControlName="fullName"
+                    [attr.aria-invalid]="isInvalid(form.controls.fullName)"
+                />
+                @if (messageFor('fullName'); as message) {
+                    <p class="hint is-error">{{ message }}</p>
+                }
+            </div>
+
+            <div class="field">
+                <label for="username">Username</label>
+                <input
+                    id="username"
+                    type="text"
+                    autocomplete="username"
+                    formControlName="username"
+                    [attr.aria-invalid]="isInvalid(form.controls.username)"
+                />
+                @if (messageFor('username'); as message) {
+                    <p class="hint is-error">{{ message }}</p>
+                } @else {
+                    <p class="hint">Other people find you by this.</p>
+                }
+            </div>
+
+            <div class="field">
+                <label for="bio">Bio</label>
+                <textarea
+                    id="bio"
+                    rows="3"
+                    placeholder="Something about you"
+                    formControlName="bio"
+                ></textarea>
+            </div>
+        </div>
+
+        @if (error()) {
+            <p
+                class="error"
+                role="alert"
+            >
+                {{ error() }}
+            </p>
+        }
+
+        @if (saved()) {
+            <p
+                class="saved"
+                role="status"
+            >
+                Profile saved.
+            </p>
+        }
+
+        <button
+            type="submit"
+            class="submit"
+            [disabled]="saving() || uploading()"
+        >
+            {{ saving() ? 'Saving…' : 'Save profile' }}
+        </button>
+    </form>
+
+    <section class="group">
+        <p class="section">Security</p>
+        <button
+            type="button"
+            class="tile"
+            (click)="goToPassword()"
+        >
+            <span class="tile-icon">
+                <lucide-icon [img]="keyIcon" />
+            </span>
+            <span class="tile-text">
+                <span class="tile-title">Change password</span>
+                <span class="tile-sub">Keeps your message history — your keys are re-sealed, not replaced.</span>
+            </span>
+        </button>
+    </section>
+</div>

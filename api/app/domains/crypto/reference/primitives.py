@@ -10,6 +10,7 @@ import uuid
 # Domain separators. Every signed or AEAD-bound blob starts with one of these so a value produced
 # for one purpose can never be replayed as a value for another (cross-protocol confusion).
 DS_IDENTITY_BIND = b"NS-v1-idbind"
+DS_PREKEY_BIND = b"NS-v1-prekeybind"  # signed prekey bound to its user and device
 DS_MESSAGE = b"NS-v1-msg"          # AAD prefix for a sealed message
 DS_MESSAGE_KEY = b"NS-v1-msgkey"   # HKDF info when deriving a message key from a chain key
 DS_CHAIN = b"NS-v1-chain"          # HKDF info when advancing the chain

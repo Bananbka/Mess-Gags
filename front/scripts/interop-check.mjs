@@ -14,7 +14,7 @@ import { webcrypto } from 'node:crypto';
 
 import { sha256 } from '@noble/hashes/sha2.js';
 
-import { safetyNumber, identityBindingMessage } from '../src/app/core/crypto/identity.ts';
+import { safetyNumber, identityBindingMessage, prekeyBindingMessage } from '../src/app/core/crypto/identity.ts';
 import { buildMessageAad } from '../src/app/core/crypto/envelope.ts';
 import { buildGrantAad, computeMemberSetHash, distributionSigningPayload } from '../src/app/core/crypto/grants.ts';
 import { b64uEncode, concatBytes, DS_CHANNEL_POST, utf8, uuidBytes } from '../src/app/core/crypto/primitives.ts';
@@ -65,6 +65,7 @@ const actual = {
     ),
     post_payload: b64uEncode(postPayload),
     safety_number: safetyNumber(k32, k32b),
+    prekey_binding: b64uEncode(prekeyBindingMessage(USER, DEV, k32)),
 };
 
 const expected = JSON.parse(process.argv[2]);

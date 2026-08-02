@@ -1,0 +1,116 @@
+@use 'ui';
+
+:host {
+    @include ui.screen-page;
+}
+
+.identity {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.avatar-picker {
+    position: relative;
+    display: inline-flex;
+    cursor: pointer;
+
+    &:hover .avatar-overlay {
+        opacity: 1;
+    }
+}
+
+.avatar-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgb(0 0 0 / 55%);
+    border-radius: 50%;
+    color: #fff;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+
+    lucide-icon {
+        width: 1.25rem;
+        height: 1.25rem;
+    }
+}
+
+.identity-hint {
+    max-width: 24rem;
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    line-height: 1.5;
+}
+
+.saved {
+    margin: 1rem 0 0;
+    padding: 0.75rem 0.875rem;
+    background: rgb(52 211 153 / 8%);
+    border: 1px solid rgb(52 211 153 / 22%);
+    border-radius: var(--radius-lg);
+    color: var(--ok);
+    font-size: 0.8125rem;
+}
+
+.group {
+    margin-top: 2rem;
+}
+
+.tile {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.875rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2xl);
+    text-align: left;
+    transition: border-color 0.15s ease;
+
+    &:hover {
+        border-color: rgb(163 88 249 / 30%);
+    }
+}
+
+.tile-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 2.25rem;
+    height: 2.25rem;
+    background: rgb(163 88 249 / 15%);
+    border-radius: var(--radius-lg);
+    color: var(--primary);
+
+    lucide-icon {
+        width: 1.125rem;
+        height: 1.125rem;
+    }
+}
+
+.tile-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.tile-title {
+    color: var(--foreground);
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.tile-sub {
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+}

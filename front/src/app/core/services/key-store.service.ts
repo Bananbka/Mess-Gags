@@ -11,13 +11,27 @@ import {
     WRAP_ALGORITHM,
     wrapChainKey,
 } from '../crypto/grants';
-import { generateIdentity, unwrapPrivateBundle, wrapPrivateBundle } from '../crypto/identity';
+import {
+    generateIdentity,
+    generateSignedPrekey,
+    unwrapPrivateBundle,
+    WrappedBundle,
+    wrapPrivateBundle,
+} from '../crypto/identity';
 import { b64uDecode, b64uEncode } from '../crypto/primitives';
 import { generateChainKey, ReceiverChain, SenderChain } from '../crypto/ratchet';
-import { Distribution, GrantUpload } from '../models/crypto.model';
+import { Distribution, GrantUpload, OwnIdentity } from '../models/crypto.model';
 import { CryptoApiService } from './crypto-api.service';
 
 const DEVICE_ID_KEY = 'ns.device_id';
+
+/**
+ * How old a signed prekey may get before it is replaced.
+ *
+ * A week, matching what `docs/crypto-spec-v1.md` §2 describes. The window bounds how much grant
+ * traffic a single compromised prekey could open: only grants wrapped while it was current.
+ */
+const PREKEY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface UnlockedIdentity {
     userId: string;
@@ -149,11 +163,96 @@ export class KeyStoreService {
                 identityPrivate: opened.identityPrivate,
             };
             this.isUnlocked.set(true);
+
+            // Not awaited: the prekey has no bearing on whether this session can read or send, and
+            // holding sign-in on a hygiene call would trade something the user notices for something
+            // they do not.
+            void this.rotatePrekeyIfStale(mine);
             return true;
         } catch {
             // A GCM tag failure here means the wrong password, not a corrupt bundle.
             return false;
         }
+    }
+
+    /**
+     * Rotate the signed prekey if the published one is stale.
+     *
+     * The private half is deliberately **not** retained. Grants wrap to the prekey and are unwrapped
+     * with the identity key, so nothing in this client ever needs the prekey private — keeping it
+     * would be material to lose for no gain. Rotation's value is that the previous public key stops
+     * being offered, which is what gives grants forward secrecy across rotations.
+     *
+     * Best-effort: a failure here must not block unlock.
+     */
+    async rotatePrekeyIfStale(published: OwnIdentity, maxAgeMs = PREKEY_MAX_AGE_MS): Promise<boolean> {
+        const identity = this.identity;
+        if (!identity) {
+            return false;
+        }
+
+        const createdAt = published.signed_prekey_created_at
+            ? new Date(published.signed_prekey_created_at).getTime()
+            : 0;
+
+        if (published.signed_prekey_public && Date.now() - createdAt < maxAgeMs) {
+            return false;
+        }
+
+        try {
+            const prekey = generateSignedPrekey(identity.signingPrivate, identity.userId, identity.deviceId);
+
+            await firstValueFrom(
+                this.cryptoApi.rotatePrekey(
+                    identity.deviceId,
+                    b64uEncode(prekey.prekeyPublic),
+                    b64uEncode(prekey.signature)
+                )
+            );
+            return true;
+        } catch {
+            // Stale-but-valid is strictly better than blocking sign-in over key hygiene.
+            return false;
+        }
+    }
+
+    /**
+     * Re-seal a published device's private bundle under a new password.
+     *
+     * Opened with the old password and immediately re-opened with the new one before returning. That
+     * second unwrap is the point: `POST /auth/change-password` accepts whatever bundle it is given
+     * without being able to verify it opens, so a wrapping mistake would lock the account out with a
+     * success response. Failing here instead costs nothing.
+     */
+    async rewrapBundleFor(published: OwnIdentity, oldPassword: string, newPassword: string): Promise<WrappedBundle> {
+        const opened = await unwrapPrivateBundle(
+            published.encrypted_private_bundle,
+            published.kdf_params as never,
+            oldPassword
+        );
+
+        const rewrapped = await wrapPrivateBundle(
+            {
+                signingPrivate: opened.signingPrivate,
+                signingPublic: b64uDecode(published.signing_public_key),
+                identityPrivate: opened.identityPrivate,
+                identityPublic: b64uDecode(published.identity_public_key),
+                identityKeySignature: b64uDecode(published.identity_key_signature),
+            },
+            newPassword
+        );
+
+        // Prove it opens before it leaves this machine.
+        const verified = await unwrapPrivateBundle(rewrapped.encryptedPrivateBundle, rewrapped.kdfParams, newPassword);
+
+        if (
+            b64uEncode(verified.signingPrivate) !== b64uEncode(opened.signingPrivate) ||
+            b64uEncode(verified.identityPrivate) !== b64uEncode(opened.identityPrivate)
+        ) {
+            throw new Error('Re-wrapped bundle did not round-trip; refusing to change the password.');
+        }
+
+        return rewrapped;
     }
 
     lock(): void {
