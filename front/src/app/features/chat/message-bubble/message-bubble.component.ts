@@ -1,4 +1,15 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    effect,
+    inject,
+    input,
+    output,
+    signal,
+    untracked,
+} from '@angular/core';
 import {
     AlertTriangle,
     Archive,
@@ -39,6 +50,27 @@ interface StatusView {
     tone: 'normal' | 'pending' | 'warn' | 'danger' | 'inert';
     icon: LucideIconData | null;
 }
+
+/**
+ * How long a `no_key` message stays quiet before it explains itself.
+ *
+ * `docs/ui-states.md` calls this state transient and normal, and the client now pulls grants on a
+ * backoff starting at 400ms, so the overwhelmingly common case resolves within a beat. Announcing a
+ * missing key for that beat trains the reader to ignore the notice — and it is the notice that
+ * matters on the rare occasion the key really is absent.
+ *
+ * The message body is still withheld during the grace period. This delays an explanation, never
+ * content: nothing unread is ever shown as though it had been decrypted.
+ */
+const NO_KEY_GRACE_MS = 1500;
+
+/** The quiet first phase of `no_key`: waiting, with no claim that anything is wrong. */
+const SETTLING_VIEW: StatusView = {
+    placeholder: 'Decrypting…',
+    detail: null,
+    tone: 'pending',
+    icon: null,
+};
 
 const STATUS_VIEWS: Record<DecryptStatus, StatusView> = {
     ok: { placeholder: null, detail: null, tone: 'normal', icon: null },
@@ -85,6 +117,7 @@ const STATUS_VIEWS: Record<DecryptStatus, StatusView> = {
 })
 export class MessageBubbleComponent {
     private readonly directory = inject(DirectoryService);
+    private readonly destroyRef = inject(DestroyRef);
 
     readonly message = input.required<DecryptedMessage>();
     /** Groups and channels label each sender; a two-party chat does not need to. */
@@ -93,16 +126,51 @@ export class MessageBubbleComponent {
 
     readonly deleteRequested = output<string>();
 
+    /** True while a freshly seen `no_key` is still within its grace period. */
+    private readonly settling = signal(false);
+
     readonly isOwn = computed(() => this.directory.isMe(this.message().senderId));
     readonly sender = computed(() => this.directory.lookup(this.message().senderId));
-    readonly view = computed(() => STATUS_VIEWS[this.message().status]);
     readonly time = computed(() => messageTime(this.message().createdAt));
+
+    readonly view = computed(() => {
+        const status = this.message().status;
+        return status === 'no_key' && this.settling() ? SETTLING_VIEW : STATUS_VIEWS[status];
+    });
 
     /** Only ever true when a signature was actually checked and passed — never a default. */
     readonly showVerified = computed(() => this.message().senderVerified && this.message().status === 'ok');
 
     /** A channel post is signed but not confidential, so it gets the opposite of a lock. */
     readonly showBroadcastMark = computed(() => this.message().status === 'plaintext');
+
+    constructor() {
+        let timer: ReturnType<typeof setTimeout> | null = null;
+
+        // Only the first sighting of a no_key gets the grace period. A message still unreadable after
+        // the retries have run stays escalated rather than flickering back to a calm state.
+        effect(() => {
+            const isMissingKey = this.message().status === 'no_key';
+
+            untracked(() => {
+                if (timer) {
+                    clearTimeout(timer);
+                    timer = null;
+                }
+
+                this.settling.set(isMissingKey);
+                if (isMissingKey) {
+                    timer = setTimeout(() => this.settling.set(false), NO_KEY_GRACE_MS);
+                }
+            });
+        });
+
+        this.destroyRef.onDestroy(() => {
+            if (timer) {
+                clearTimeout(timer);
+            }
+        });
+    }
 
     readonly checkIcon = Check;
     readonly checkCheckIcon = CheckCheck;

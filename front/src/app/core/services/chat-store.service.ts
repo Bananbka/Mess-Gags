@@ -450,8 +450,11 @@ export class ChatStoreService {
 
             this.pending.update((p) => p.filter((item) => item.localId !== localId));
             this.rawMessages.set(sent._id, sent);
-            this.appendDecrypted(this.messages_.recordOutgoing(sent, text));
+
+            // Bump before recording: bumping clears the preview override, and our own message is one
+            // we can always read, so it should end up as the override rather than be wiped by it.
             this.bumpChatPreview(chatId, sent);
+            this.appendDecrypted(this.messages_.recordOutgoing(sent, text));
         } catch (error) {
             if (this.isMemberVerificationFailure(error)) {
                 // Blocking, not retryable: we refused to hand keys to a roster we cannot verify.
@@ -737,6 +740,20 @@ export class ChatStoreService {
     }
 
     private bumpChatPreview(chatId: string, raw: MessageResponse): void {
+        // The override holds the newest message we actually decrypted. A newer one has just arrived
+        // that we have not, so the override is now stale — and leaving it in place is worse than
+        // having none, because the row would show old text beside an unread badge, claiming the new
+        // message says something it does not. Dropping it falls back to the sealed placeholder,
+        // which is the truth: we hold no key for this one yet.
+        this.previewOverrides.update((map) => {
+            if (!map.has(chatId)) {
+                return map;
+            }
+            const next = new Map(map);
+            next.delete(chatId);
+            return next;
+        });
+
         this.chats.update((list) => {
             const index = list.findIndex((c) => c.id === chatId);
             if (index < 0) {

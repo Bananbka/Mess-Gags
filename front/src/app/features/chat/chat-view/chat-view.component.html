@@ -141,7 +141,7 @@
             </p>
         }
 
-        @for (item of conversation(); track $index) {
+        @for (item of conversation(); track itemKey(item, $index)) {
             @switch (item.kind) {
                 @case ('history-floor') {
                     <!-- Permanent, not loading. The server withholds pre-join ciphertext entirely so

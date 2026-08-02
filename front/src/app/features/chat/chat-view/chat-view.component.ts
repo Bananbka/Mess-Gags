@@ -26,7 +26,7 @@ import {
     X,
 } from 'lucide-angular';
 
-import { ChatStoreService } from '../../../core/services/chat-store.service';
+import { ChatStoreService, ConversationItem } from '../../../core/services/chat-store.service';
 import { DirectoryService } from '../../../core/services/directory.service';
 import { SessionService } from '../../../core/services/session.service';
 import { AvatarComponent } from '../../../shared/ui/avatar/avatar.component';
@@ -132,6 +132,24 @@ export class ChatViewComponent implements AfterViewChecked {
             this.bannerDismissed.set(false);
             this.pinToBottom = true;
         });
+    }
+
+    /**
+     * A stable identity per row.
+     *
+     * Index tracking would recycle a bubble onto a different message whenever older history is
+     * prepended, which matters now that a bubble carries its own state — its `no_key` grace timer
+     * would end up attached to the wrong message.
+     */
+    itemKey(item: ConversationItem, index: number): string {
+        switch (item.kind) {
+            case 'message':
+                return `m:${item.message.id}`;
+            case 'pending':
+                return `p:${item.pending.localId}`;
+            default:
+                return `${item.kind}:${index}`;
+        }
     }
 
     ngAfterViewChecked(): void {
