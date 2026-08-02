@@ -14,6 +14,7 @@ import { Router, RouterLink } from '@angular/router';
 import {
     AlertTriangle,
     ArrowLeft,
+    Copy,
     Info,
     LucideAngularModule,
     MessageSquare,
@@ -24,6 +25,7 @@ import {
     ShieldAlert,
     ShieldOff,
     SkipForward,
+    Trash2,
     Users,
     X,
 } from 'lucide-angular';
@@ -33,12 +35,24 @@ import { DirectoryService } from '../../../core/services/directory.service';
 import { DecryptedMessage } from '../../../core/services/message.service';
 import { SessionService } from '../../../core/services/session.service';
 import { AvatarComponent } from '../../../shared/ui/avatar/avatar.component';
+import {
+    ContextMenuComponent,
+    ContextMenuItem,
+    MenuAnchor,
+} from '../../../shared/ui/context-menu/context-menu.component';
 import { ComposedMessage, ComposerComponent } from '../composer/composer.component';
 import { MessageBubbleComponent } from '../message-bubble/message-bubble.component';
 
 @Component({
     selector: 'app-chat-view',
-    imports: [RouterLink, LucideAngularModule, AvatarComponent, MessageBubbleComponent, ComposerComponent],
+    imports: [
+        RouterLink,
+        LucideAngularModule,
+        AvatarComponent,
+        MessageBubbleComponent,
+        ComposerComponent,
+        ContextMenuComponent,
+    ],
     templateUrl: './chat-view.component.html',
     styleUrl: './chat-view.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -65,6 +79,9 @@ export class ChatViewComponent {
     readonly bannerDismissed = signal(false);
     readonly replyingTo = signal<DecryptedMessage | null>(null);
     readonly editing = signal<DecryptedMessage | null>(null);
+
+    readonly menuItems = signal<ContextMenuItem[]>([]);
+    readonly menuAnchor = signal<MenuAnchor | null>(null);
 
     readonly isChannel = computed(() => this.chat()?.chat_type === 'channel');
     readonly isGroupLike = computed(() => this.chat()?.chat_type !== 'private');
@@ -257,6 +274,50 @@ export class ChatViewComponent {
                 .map((item) => (item as { message: DecryptedMessage }).message)
                 .find((candidate) => candidate.id === message.replyToId) ?? null
         );
+    }
+
+    /**
+     * Build the menu for one message.
+     *
+     * Composed from what is actually possible rather than shown-then-disabled: copy needs plaintext,
+     * editing needs a message we wrote and could open, deleting needs to be ours. An item that would
+     * be rejected is worse than an absent one.
+     */
+    openMessageMenu(request: { message: DecryptedMessage; x: number; y: number }): void {
+        const message = request.message;
+        const items: ContextMenuItem[] = [{ icon: Reply, label: 'Reply', action: () => this.startReply(message) }];
+
+        if (message.text !== null) {
+            items.push({ icon: Copy, label: 'Copy text', action: () => void this.copyText(message) });
+        }
+
+        if (this.directory.isMe(message.senderId) && message.status === 'ok') {
+            items.push({ icon: Pencil, label: 'Edit', action: () => this.startEdit(message) });
+        }
+
+        if (this.canDelete(message.senderId)) {
+            items.push({
+                icon: Trash2,
+                label: 'Delete',
+                danger: true,
+                action: () => void this.deleteMessage(message.id),
+            });
+        }
+
+        this.menuItems.set(items);
+        this.menuAnchor.set({ x: request.x, y: request.y });
+    }
+
+    closeMenu(): void {
+        this.menuAnchor.set(null);
+    }
+
+    private async copyText(message: DecryptedMessage): Promise<void> {
+        try {
+            await navigator.clipboard.writeText(message.text ?? '');
+        } catch {
+            this.store.realtimeError.set('Could not copy that message.');
+        }
     }
 
     startReply(message: DecryptedMessage): void {

@@ -111,6 +111,34 @@ describe('MessageBubbleComponent', () => {
         expect(host.querySelector('.mark.is-warn')).not.toBeNull();
     });
 
+    /** Right-click is the primary way in, so it must suppress the browser menu and report where. */
+    it('requests the actions menu on right-click and suppresses the browser one', () => {
+        fixture.componentRef.setInput('message', message());
+        fixture.detectChanges();
+
+        const requests: { x: number; y: number }[] = [];
+        fixture.componentInstance.menuRequested.subscribe((request) => requests.push(request));
+
+        const event = new MouseEvent('contextmenu', { clientX: 120, clientY: 240, cancelable: true });
+        (fixture.nativeElement as HTMLElement).dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBeTrue();
+        expect(requests).toEqual([jasmine.objectContaining({ x: 120, y: 240 })]);
+    });
+
+    /** Touch has no right button, so the overflow control must reach the same menu. */
+    it('requests the actions menu from the overflow button', () => {
+        fixture.componentRef.setInput('message', message());
+        fixture.detectChanges();
+
+        let asked = false;
+        fixture.componentInstance.menuRequested.subscribe(() => (asked = true));
+
+        (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.action')?.click();
+
+        expect(asked).toBeTrue();
+    });
+
     it('does not offer editing for a message it could not open', () => {
         fixture.componentRef.setInput('message', message({ status: 'failed', text: null }));
         fixture.detectChanges();

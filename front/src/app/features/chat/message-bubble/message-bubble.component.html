@@ -109,38 +109,16 @@
             />
         }
 
+        <!-- Actions live in the right-click menu rather than here. Hover buttons on every row compete
+             with the message for attention, and on touch there is no hover to reveal them. -->
         <button
             type="button"
             class="action"
-            aria-label="Reply to this message"
-            title="Reply"
-            (click)="replyRequested.emit(message())"
+            [attr.aria-label]="'Actions for this message'"
+            aria-haspopup="menu"
+            (click)="openMenuFromButton($event)"
         >
-            <lucide-icon [img]="replyIcon" />
+            <lucide-icon [img]="moreIcon" />
         </button>
-
-        @if (canEdit()) {
-            <button
-                type="button"
-                class="action"
-                aria-label="Edit message"
-                title="Edit"
-                (click)="editRequested.emit(message())"
-            >
-                <lucide-icon [img]="editIcon" />
-            </button>
-        }
-
-        @if (canDelete()) {
-            <button
-                type="button"
-                class="action"
-                aria-label="Delete message"
-                title="Delete"
-                (click)="deleteRequested.emit(message().id)"
-            >
-                <lucide-icon [img]="trashIcon" />
-            </button>
-        }
     </p>
 </div>

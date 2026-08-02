@@ -271,6 +271,9 @@
     border-color: var(--danger-border);
 }
 
+/* The way into the actions menu for anyone without a right button. Hidden until hover on a pointer
+   device so it does not clutter every row, but always present on touch, where there is no hover to
+   reveal it and right-click does not exist. */
 .action {
     display: inline-flex;
     padding: 0;
@@ -288,11 +291,17 @@
     }
 
     &:hover {
-        color: var(--danger);
+        color: var(--foreground);
     }
 }
 
 :host(:hover) .action,
 .action:focus-visible {
     opacity: 1;
+}
+
+@media (hover: none) {
+    .action {
+        opacity: 1;
+    }
 }

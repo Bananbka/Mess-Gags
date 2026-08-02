@@ -176,6 +176,7 @@
                         (deleteRequested)="deleteMessage($event)"
                         (replyRequested)="startReply($event)"
                         (editRequested)="startEdit($event)"
+                        (menuRequested)="openMessageMenu($event)"
                     />
                 }
 
@@ -295,5 +296,13 @@
         [placeholder]="isChannel() ? 'Post to channel…' : 'Message…'"
         (submitted)="send($event)"
         (typing)="onTyping($event)"
+    />
+}
+
+@if (menuAnchor(); as anchor) {
+    <app-context-menu
+        [items]="menuItems()"
+        [anchor]="anchor"
+        (closed)="closeMenu()"
     />
 }

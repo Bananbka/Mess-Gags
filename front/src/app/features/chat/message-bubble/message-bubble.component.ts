@@ -19,6 +19,7 @@ import {
     Lock,
     LucideAngularModule,
     LucideIconData,
+    MoreVertical,
     Paperclip,
     Pencil,
     RefreshCw,
@@ -114,6 +115,7 @@ const STATUS_VIEWS: Record<DecryptStatus, StatusView> = {
     styleUrl: './message-bubble.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
+        '(contextmenu)': 'onContextMenu($event)',
         '[class.is-outgoing]': 'isOwn()',
         '[attr.data-delivery]': 'delivery()',
         // An attribute rather than a `[class]` string: a class-map binding competes with the
@@ -143,6 +145,8 @@ export class MessageBubbleComponent {
     readonly deleteRequested = output<string>();
     readonly editRequested = output<DecryptedMessage>();
     readonly replyRequested = output<DecryptedMessage>();
+    /** Right-click, the Menu key, or the overflow button — all ask for the same menu. */
+    readonly menuRequested = output<{ message: DecryptedMessage; x: number; y: number }>();
 
     /** The message this one answers, if it is on screen. */
     readonly replyTo = input<DecryptedMessage | null>(null);
@@ -222,6 +226,26 @@ export class MessageBubbleComponent {
     readonly replyIcon = Reply;
     readonly editIcon = Pencil;
     readonly paperclipIcon = Paperclip;
+    readonly moreIcon = MoreVertical;
+
+    /**
+     * Open the actions menu at the pointer.
+     *
+     * The browser menu is suppressed on purpose — these actions are the useful ones here, and the
+     * content is ciphertext the browser's own items cannot do anything sensible with. The Menu key
+     * and Shift+F10 raise this same event, so the keyboard path comes free.
+     */
+    onContextMenu(event: MouseEvent): void {
+        event.preventDefault();
+        this.menuRequested.emit({ message: this.message(), x: event.clientX, y: event.clientY });
+    }
+
+    /** Touch and trackpad users who have no right button still need a way in. */
+    openMenuFromButton(event: MouseEvent): void {
+        event.stopPropagation();
+        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+        this.menuRequested.emit({ message: this.message(), x: rect.left, y: rect.bottom + 4 });
+    }
 
     downloadUrl(file: MessageAttachment): string {
         return this.chatApi.attachmentUrl(this.message().chatId, file.url);
