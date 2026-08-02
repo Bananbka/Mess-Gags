@@ -311,7 +311,22 @@ async def update_message(
 
     if message_in.envelope is not None:
         existing = msg.get("envelope")
-        if existing and message_in.envelope.idx <= existing.get("idx", -1):
+
+        # An index only means anything within one chain. A message key is derived from its chain key,
+        # and every sender_key_id has its own random chain key, so index 0 of a new chain is a
+        # different key from index 0 of the old one — no (key, nonce) pair is repeated.
+        #
+        # Scoping the check to a matching chain is not a relaxation, it is what makes it correct.
+        # Comparing bare indices used to work only because a device could publish one chain per epoch;
+        # since that constraint was lifted, a client whose in-memory chain is gone mints a fresh one
+        # starting at 0, and every edit after a reload was rejected out of hand.
+        same_chain = (
+            existing
+            and str(existing.get("skid")) == str(message_in.envelope.skid)
+            and existing.get("epoch") == message_in.envelope.epoch
+        )
+
+        if same_chain and message_in.envelope.idx <= existing.get("idx", -1):
             raise AppException(
                 400, "CHAIN_INDEX_REUSED",
                 "An edit must use a fresh chain index; reusing one would repeat a message key.",

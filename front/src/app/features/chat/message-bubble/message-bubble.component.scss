@@ -44,12 +44,54 @@
 .quote {
     display: flex;
     flex-direction: column;
+    align-items: flex-start;
     max-width: 100%;
     margin-bottom: 0.25rem;
     padding: 0.25rem 0.625rem;
+    background: none;
+    border: none;
     border-left: 2px solid var(--primary);
     color: var(--muted-foreground);
     font-size: 0.75rem;
+    text-align: left;
+    transition: background-color 0.12s ease;
+
+    &:not(.is-inert) {
+        cursor: pointer;
+
+        &:hover,
+        &:focus-visible {
+            background: rgb(163 88 249 / 10%);
+            outline: none;
+        }
+    }
+
+    &.is-inert {
+        cursor: default;
+    }
+}
+
+/* Flashed after jumping here from a quote, so the reader can see where they landed. */
+:host(.is-highlighted) .bubble {
+    animation: land 1.6s ease-out;
+}
+
+@keyframes land {
+    0%,
+    40% {
+        box-shadow: 0 0 0 2px var(--primary);
+    }
+
+    100% {
+        box-shadow: 0 0 0 2px transparent;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :host(.is-highlighted) .bubble {
+        animation: none;
+        box-shadow: 0 0 0 2px var(--primary);
+    }
 }
 
 .quote-author {

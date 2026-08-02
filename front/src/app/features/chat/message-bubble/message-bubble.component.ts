@@ -116,6 +116,8 @@ const STATUS_VIEWS: Record<DecryptStatus, StatusView> = {
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         '(contextmenu)': 'onContextMenu($event)',
+        // Addressable so a reply quote can scroll to the message it quotes.
+        '[attr.id]': '"msg-" + message().id',
         '[class.is-outgoing]': 'isOwn()',
         '[attr.data-delivery]': 'delivery()',
         // An attribute rather than a `[class]` string: a class-map binding competes with the
@@ -147,6 +149,8 @@ export class MessageBubbleComponent {
     readonly replyRequested = output<DecryptedMessage>();
     /** Right-click, the Menu key, or the overflow button — all ask for the same menu. */
     readonly menuRequested = output<{ message: DecryptedMessage; x: number; y: number }>();
+    /** Tapping a quote asks to be taken to the message it quotes. */
+    readonly jumpRequested = output<string>();
 
     /** The message this one answers, if it is on screen. */
     readonly replyTo = input<DecryptedMessage | null>(null);

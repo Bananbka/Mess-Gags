@@ -320,6 +320,26 @@ export class ChatViewComponent {
         }
     }
 
+    /**
+     * Scroll to a quoted message and flash it.
+     *
+     * Landing somewhere mid-history without a cue leaves the reader hunting for what moved, so the
+     * target is highlighted briefly. Jumping also unpins the view — arriving at an older message and
+     * then being dragged back to the newest one would undo the navigation.
+     */
+    jumpToMessage(messageId: string): void {
+        const target = this.scroller()?.nativeElement.querySelector<HTMLElement>(`#msg-${CSS.escape(messageId)}`);
+        if (!target) {
+            return;
+        }
+
+        this.pinToBottom = false;
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        target.classList.add('is-highlighted');
+        setTimeout(() => target.classList.remove('is-highlighted'), 1600);
+    }
+
     startReply(message: DecryptedMessage): void {
         this.editing.set(null);
         this.replyingTo.set(message);

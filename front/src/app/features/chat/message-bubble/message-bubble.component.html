@@ -30,14 +30,23 @@
          is single-use, so a second read of the same index would fail. If it is not on screen, the
          quote says so rather than inventing content. -->
     @if (message().replyToId) {
-        <div class="quote">
-            @if (replyTo(); as quoted) {
+        @if (replyTo(); as quoted) {
+            <button
+                type="button"
+                class="quote"
+                [attr.aria-label]="'Go to the message from ' + quotedAuthor()"
+                (click)="jumpRequested.emit(quoted.id)"
+            >
                 <span class="quote-author">{{ quotedAuthor() }}</span>
                 <span class="quote-text">{{ quoted.text ?? 'Unreadable message' }}</span>
-            } @else {
+            </button>
+        } @else {
+            <!-- Not a button: the quoted message is not loaded, so there is nowhere to jump to.
+                 A control that does nothing is worse than plain text saying why. -->
+            <div class="quote is-inert">
                 <span class="quote-text is-missing">Replying to an earlier message</span>
-            }
-        </div>
+            </div>
+        }
     }
 
     <div class="bubble">

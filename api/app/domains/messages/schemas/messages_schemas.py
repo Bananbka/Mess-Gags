@@ -164,9 +164,14 @@ class MessageCreateRequest(BaseModel):
 class MessageUpdateRequest(BaseModel):
     """Edit a message.
 
-    A v1 edit must be sealed under a FRESH chain index. Re-encrypting under an already-used
-    message key would repeat a (key, nonce) pair, which is catastrophic for AES-GCM — it leaks the
-    XOR of both plaintexts and can expose the authentication subkey.
+    A v1 edit must never reuse a message key. Re-encrypting under an already-used one would repeat a
+    (key, nonce) pair, which is catastrophic for AES-GCM — it leaks the XOR of both plaintexts and can
+    expose the authentication subkey.
+
+    A key is identified by (sender_key_id, index), not by index alone: each chain has its own random
+    chain key, so the same index under a different chain is a different key. The server therefore
+    requires a greater index only when the edit reuses the *same* chain, and accepts any index from a
+    new one. Sealing from a fresh chain is the normal case for a client that has reloaded.
     """
     encrypted_content: str | None = None
     envelope: MessageEnvelope | None = None

@@ -192,3 +192,60 @@ async def test_edit_rejects_reused_chain_index():
     finally:
         await alice.aclose()
         await bob.aclose()
+
+
+async def test_edit_from_a_fresh_chain_is_accepted():
+    """An edit sealed under a NEW chain may start at index 0.
+
+    An index only identifies a key within one chain: each sender_key_id has its own random chain key,
+    so index 0 of a new chain is a different key from index 0 of the old one and no (key, nonce) pair
+    repeats. This is the ordinary case, not an edge one — chain state is memory-only, so a client that
+    has reloaded mints a fresh chain and its first send is index 0. Comparing bare indices rejected
+    every such edit.
+    """
+    alice, alice_id = await _register_user()
+    bob, bob_id = await _register_user()
+    try:
+        chat_id = await _private_chat_between(alice, bob_id)
+        identity = generate_identity(alice_id, uuid.uuid4())
+
+        # Original, sent well into the first chain so its index is comfortably above zero.
+        first_chain = SenderChain(generate_chain_key())
+        first_skid = uuid.uuid4()
+        for _ in range(4):
+            first_chain.next_message_key()
+
+        mk, nonce, idx = first_chain.next_message_key()
+        assert idx > 0
+        envelope = seal_message(
+            message_key=mk, nonce=nonce, signing_private=identity.signing_private,
+            chat_id=chat_id, epoch=1, sender_id=alice_id,
+            sender_key_id=first_skid, chain_index=idx, plaintext=b"original",
+        )
+        r = await alice.post("/messages/", json={"chat_id": str(chat_id), "envelope": envelope})
+        assert r.status_code == 200, r.text
+        message_id = r.json()["data"]["_id"]
+
+        # The client reloaded: new chain, new key, index back to 0.
+        second_chain = SenderChain(generate_chain_key())
+        second_skid = uuid.uuid4()
+        mk2, nonce2, idx2 = second_chain.next_message_key()
+        assert idx2 == 0
+
+        edited = seal_message(
+            message_key=mk2, nonce=nonce2, signing_private=identity.signing_private,
+            chat_id=chat_id, epoch=1, sender_id=alice_id,
+            sender_key_id=second_skid, chain_index=idx2, plaintext=b"edited",
+        )
+        r = await alice.put(f"/messages/{message_id}", json={"envelope": edited})
+        assert r.status_code == 200, r.text
+        assert r.json()["data"]["is_edited"] is True
+        assert r.json()["data"]["envelope"]["skid"] == str(second_skid)
+
+        # Reuse within that new chain is still refused — the rule is scoped, not removed.
+        r = await alice.put(f"/messages/{message_id}", json={"envelope": dict(edited, ct="QUJD")})
+        assert r.status_code == 400
+        assert r.json()["error_code"] == "CHAIN_INDEX_REUSED"
+    finally:
+        await alice.aclose()
+        await bob.aclose()
