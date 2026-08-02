@@ -14,7 +14,6 @@ import { Router, RouterLink } from '@angular/router';
 import {
     AlertTriangle,
     ArrowLeft,
-    Clock,
     Info,
     LucideAngularModule,
     MessageSquare,
@@ -27,11 +26,11 @@ import {
     X,
 } from 'lucide-angular';
 
-import { ChatStoreService, ConversationItem } from '../../../core/services/chat-store.service';
+import { ChatStoreService, ConversationItem, PendingMessage } from '../../../core/services/chat-store.service';
 import { DirectoryService } from '../../../core/services/directory.service';
+import { DecryptedMessage } from '../../../core/services/message.service';
 import { SessionService } from '../../../core/services/session.service';
 import { AvatarComponent } from '../../../shared/ui/avatar/avatar.component';
-import { messageTime } from '../../../shared/utils/display';
 import { ComposerComponent } from '../composer/composer.component';
 import { MessageBubbleComponent } from '../message-bubble/message-bubble.component';
 
@@ -123,7 +122,6 @@ export class ChatViewComponent implements AfterViewChecked {
     readonly skipForwardIcon = SkipForward;
     readonly refreshIcon = RefreshCw;
     readonly alertIcon = AlertTriangle;
-    readonly clockIcon = Clock;
     readonly usersIcon = Users;
     readonly messageSquareIcon = MessageSquare;
     readonly closeIcon = X;
@@ -134,6 +132,9 @@ export class ChatViewComponent implements AfterViewChecked {
             this.store.activeChatId.set(id);
             this.bannerDismissed.set(false);
             this.pinToBottom = true;
+            // Force the next check to count as a change, so switching to a chat that happens to have
+            // the same number of rows still scrolls to its newest message.
+            this.lastItemCount = -1;
         });
     }
 
@@ -144,9 +145,23 @@ export class ChatViewComponent implements AfterViewChecked {
      * prepended, which matters now that a bubble carries its own state — its `no_key` grace timer
      * would end up attached to the wrong message.
      */
-    /** Clock time for a pending row, matching how a delivered message stamps itself. */
-    timeOf(iso: string): string {
-        return messageTime(iso);
+    /**
+     * Present an unsent message in the same shape a delivered one has.
+     *
+     * We wrote it, so its content is known and its authorship is not in question — status `ok` and
+     * `senderVerified` are statements of fact here, not claims about a signature we checked.
+     */
+    pendingAsMessage(pending: PendingMessage): DecryptedMessage {
+        return {
+            id: pending.localId,
+            chatId: this.chat()?.id ?? '',
+            senderId: this.session.user()?.id ?? '',
+            createdAt: pending.createdAt,
+            text: pending.text,
+            status: 'ok',
+            isEdited: false,
+            senderVerified: true,
+        };
     }
 
     itemKey(item: ConversationItem, index: number): string {
@@ -161,12 +176,25 @@ export class ChatViewComponent implements AfterViewChecked {
     }
 
     ngAfterViewChecked(): void {
+        // Bail before touching the counter when there is nothing to scroll yet. The pane lives inside
+        // an @if on the loaded chat, so the first few checks run without it — and recording the count
+        // then would consume the one transition that triggers the scroll, leaving a freshly opened
+        // conversation sitting at the top of its history.
+        const element = this.scroller()?.nativeElement;
+        if (!element) {
+            return;
+        }
+
         const count = this.conversation().length;
-        if (count !== this.lastItemCount) {
-            this.lastItemCount = count;
-            if (this.pinToBottom) {
-                this.scrollToBottom();
-            }
+        if (count === this.lastItemCount) {
+            return;
+        }
+
+        this.lastItemCount = count;
+        if (this.pinToBottom) {
+            // After layout, not during this check: scrollHeight is not final until the new rows have
+            // been laid out, and fonts settling can change it again.
+            requestAnimationFrame(() => this.scrollToBottom());
         }
     }
 

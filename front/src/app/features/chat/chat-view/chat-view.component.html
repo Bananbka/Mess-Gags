@@ -177,24 +177,17 @@
                 }
 
                 @case ('pending') {
-                    <div class="pending">
-                        <div
-                            class="pending-bubble"
-                            [class.is-failed]="item.pending.status === 'failed'"
-                        >
-                            {{ item.pending.text }}
-                        </div>
+                    <!-- The same component that renders a delivered message, so acceptance changes
+                         one glyph and nothing else. A second bubble implementation could not be kept
+                         pixel-identical, and any drift reads as the message re-rendering itself. -->
+                    <app-message-bubble
+                        [message]="pendingAsMessage(item.pending)"
+                        [showSender]="false"
+                        [delivery]="item.pending.status"
+                    />
 
-                        @if (item.pending.status === 'sending') {
-                            <!-- Deliberately just a clock in the same slot the delivered tick will
-                                 occupy. The bubble beside it is styled identically to a sent one, so
-                                 acceptance swaps one small glyph rather than restyling the message. -->
-                            <p class="pending-meta">
-                                <span class="time">{{ timeOf(item.pending.createdAt) }}</span>
-                                <lucide-icon [img]="clockIcon" />
-                                <span class="sr-only">Sending</span>
-                            </p>
-                        } @else {
+                    @if (item.pending.status === 'failed') {
+                        <div class="pending">
                             <div
                                 class="pending-error"
                                 role="alert"
@@ -223,8 +216,8 @@
                                     Discard
                                 </button>
                             </div>
-                        }
-                    </div>
+                        </div>
+                    }
                 }
             }
         }

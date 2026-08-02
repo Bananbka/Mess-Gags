@@ -300,64 +300,21 @@
     }
 }
 
-/* ── Outgoing, not yet accepted ───────────────────────────────────────────────────────────── */
+/* ── A send that failed ───────────────────────────────────────────────────────────────────────
+   The bubble itself is rendered by message-bubble, the same component a delivered message uses, so
+   nothing about the message is styled here. Only the recovery strip below it is. */
 
 .pending {
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    padding: 0.375rem 1rem;
-}
-
-/* Geometry and colour are copied from a delivered outgoing bubble on purpose. A send resolves in
-   well under a second, and any difference in fill, opacity or padding reads as the message being
-   re-rendered — the flicker is the restyle, not the wait. Only the status glyph changes. */
-.pending-bubble {
-    max-width: min(70%, 34rem);
-    padding: 0.625rem 1rem;
-    background: var(--primary);
-    border: 1px solid transparent;
-    border-radius: var(--radius-2xl);
-    border-top-right-radius: var(--radius-sm);
-    color: #fff;
-    font-size: 0.875rem;
-    line-height: 1.55;
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
-
-    &.is-failed {
-        background: var(--danger-surface);
-        border-color: var(--danger-border);
-        color: var(--foreground);
-    }
-}
-
-/* Mirrors `.meta` in message-bubble for an outgoing message — same direction, gap, size and colour —
-   so the clock gives way to the delivered tick without the row reflowing. */
-.pending-meta {
-    display: flex;
-    flex-direction: row-reverse;
-    align-items: center;
-    gap: 0.375rem;
-    /* Must equal `.meta` in message-bubble. The clock and the tick are different glyphs, so without a
-       pinned row height the message shifts vertically the moment the send is accepted. */
-    min-height: 1.125rem;
-    margin: 0.25rem 0.25rem 0;
-    color: var(--muted-foreground);
-    font-size: 0.6875rem;
-    line-height: 1;
-
-    lucide-icon {
-        width: 0.875rem;
-        height: 0.875rem;
-    }
+    padding: 0 1rem 0.375rem;
 }
 
 .pending-error {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    margin-top: 0.375rem;
     padding: 0.375rem 0.625rem;
     background: var(--danger-surface);
     border: 1px solid var(--danger-border);

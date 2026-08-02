@@ -67,9 +67,9 @@
 
         @if (isOwn()) {
             <lucide-icon
-                [img]="checkIcon"
+                [img]="deliveryIcon()"
                 class="mark is-sent"
-                title="Sent"
+                [title]="delivery() === 'sending' ? 'Sending' : delivery() === 'failed' ? 'Not sent' : 'Sent'"
             />
         }
 

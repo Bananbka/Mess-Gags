@@ -190,6 +190,16 @@
     }
 }
 
+/* A send that did not land must not read like one that did. Everything else about the bubble stays
+   put, so only the colour changes — no reflow when the state resolves either way. */
+:host([data-delivery='failed']) .mark.is-sent {
+    color: var(--danger);
+}
+
+:host([data-delivery='failed']) .bubble {
+    border-color: var(--danger-border);
+}
+
 .action {
     display: inline-flex;
     padding: 0;

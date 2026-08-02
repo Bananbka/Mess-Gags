@@ -15,6 +15,7 @@ import {
     Archive,
     Check,
     CheckCheck,
+    Clock,
     Lock,
     LucideAngularModule,
     LucideIconData,
@@ -109,6 +110,7 @@ const STATUS_VIEWS: Record<DecryptStatus, StatusView> = {
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         '[class.is-outgoing]': 'isOwn()',
+        '[attr.data-delivery]': 'delivery()',
         // An attribute rather than a `[class]` string: a class-map binding competes with the
         // `[class.is-outgoing]` binding for the same property, and the tone styles need both to be
         // reliably present at once.
@@ -123,6 +125,14 @@ export class MessageBubbleComponent {
     /** Groups and channels label each sender; a two-party chat does not need to. */
     readonly showSender = input(true);
     readonly canDelete = input(false);
+    /**
+     * Where an outgoing message is in its journey.
+     *
+     * Present so a message still being sent renders through this component rather than a parallel
+     * one. Two implementations of a bubble cannot be kept pixel-identical by hand, and any drift
+     * shows up as the message restyling itself the instant the send is accepted.
+     */
+    readonly delivery = input<'sent' | 'sending' | 'failed'>('sent');
 
     readonly deleteRequested = output<string>();
 
@@ -171,6 +181,18 @@ export class MessageBubbleComponent {
             }
         });
     }
+
+    /** The status glyph for our own message: pending, delivered, or rejected. */
+    readonly deliveryIcon = computed(() => {
+        switch (this.delivery()) {
+            case 'sending':
+                return Clock;
+            case 'failed':
+                return AlertTriangle;
+            default:
+                return Check;
+        }
+    });
 
     readonly checkIcon = Check;
     readonly checkCheckIcon = CheckCheck;
