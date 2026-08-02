@@ -14,6 +14,7 @@ import { Router, RouterLink } from '@angular/router';
 import {
     AlertTriangle,
     ArrowLeft,
+    Clock,
     Info,
     LucideAngularModule,
     MessageSquare,
@@ -30,6 +31,7 @@ import { ChatStoreService, ConversationItem } from '../../../core/services/chat-
 import { DirectoryService } from '../../../core/services/directory.service';
 import { SessionService } from '../../../core/services/session.service';
 import { AvatarComponent } from '../../../shared/ui/avatar/avatar.component';
+import { messageTime } from '../../../shared/utils/display';
 import { ComposerComponent } from '../composer/composer.component';
 import { MessageBubbleComponent } from '../message-bubble/message-bubble.component';
 
@@ -121,6 +123,7 @@ export class ChatViewComponent implements AfterViewChecked {
     readonly skipForwardIcon = SkipForward;
     readonly refreshIcon = RefreshCw;
     readonly alertIcon = AlertTriangle;
+    readonly clockIcon = Clock;
     readonly usersIcon = Users;
     readonly messageSquareIcon = MessageSquare;
     readonly closeIcon = X;
@@ -141,6 +144,11 @@ export class ChatViewComponent implements AfterViewChecked {
      * prepended, which matters now that a bubble carries its own state — its `no_key` grace timer
      * would end up attached to the wrong message.
      */
+    /** Clock time for a pending row, matching how a delivered message stamps itself. */
+    timeOf(iso: string): string {
+        return messageTime(iso);
+    }
+
     itemKey(item: ConversationItem, index: number): string {
         switch (item.kind) {
             case 'message':

@@ -186,7 +186,14 @@
                         </div>
 
                         @if (item.pending.status === 'sending') {
-                            <p class="pending-meta">Encrypting and sending…</p>
+                            <!-- Deliberately just a clock in the same slot the delivered tick will
+                                 occupy. The bubble beside it is styled identically to a sent one, so
+                                 acceptance swaps one small glyph rather than restyling the message. -->
+                            <p class="pending-meta">
+                                <span class="time">{{ timeOf(item.pending.createdAt) }}</span>
+                                <lucide-icon [img]="clockIcon" />
+                                <span class="sr-only">Sending</span>
+                            </p>
                         } @else {
                             <div
                                 class="pending-error"

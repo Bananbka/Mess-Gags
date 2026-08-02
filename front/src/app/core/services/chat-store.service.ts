@@ -27,6 +27,8 @@ const GRANT_RETRY_DELAYS = [400, 1500, 4000, 10000];
 export interface PendingMessage {
     localId: string;
     text: string;
+    /** Local send time, so the pending row can show the same stamp the delivered one will. */
+    createdAt: string;
     status: 'sending' | 'failed';
     /** True when the failure survived the automatic EPOCH_STALE re-encrypt-and-retry. */
     rekeyFailure: boolean;
@@ -440,7 +442,10 @@ export class ChatStoreService {
         }
 
         const localId = `local-${crypto.randomUUID()}`;
-        this.pending.update((p) => [...p, { localId, text, status: 'sending', rekeyFailure: false }]);
+        this.pending.update((p) => [
+            ...p,
+            { localId, text, createdAt: new Date().toISOString(), status: 'sending', rekeyFailure: false },
+        ]);
 
         try {
             const sent =

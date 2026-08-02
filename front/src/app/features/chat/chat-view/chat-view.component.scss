@@ -309,29 +309,44 @@
     padding: 0.375rem 1rem;
 }
 
+/* Geometry and colour are copied from a delivered outgoing bubble on purpose. A send resolves in
+   well under a second, and any difference in fill, opacity or padding reads as the message being
+   re-rendered — the flicker is the restyle, not the wait. Only the status glyph changes. */
 .pending-bubble {
     max-width: min(70%, 34rem);
     padding: 0.625rem 1rem;
-    background: rgb(163 88 249 / 25%);
-    border: 1px solid rgb(163 88 249 / 20%);
+    background: var(--primary);
+    border: 1px solid transparent;
     border-radius: var(--radius-2xl);
     border-top-right-radius: var(--radius-sm);
-    color: var(--foreground);
+    color: #fff;
     font-size: 0.875rem;
     line-height: 1.55;
-    opacity: 0.6;
     overflow-wrap: anywhere;
     white-space: pre-wrap;
 
     &.is-failed {
+        background: var(--danger-surface);
         border-color: var(--danger-border);
+        color: var(--foreground);
     }
 }
 
+/* Mirrors `.meta` in message-bubble for an outgoing message — same direction, gap, size and colour —
+   so the clock gives way to the delivered tick without the row reflowing. */
 .pending-meta {
+    display: flex;
+    flex-direction: row-reverse;
+    align-items: center;
+    gap: 0.375rem;
     margin: 0.25rem 0.25rem 0;
     color: var(--muted-foreground);
     font-size: 0.6875rem;
+
+    lucide-icon {
+        width: 0.875rem;
+        height: 0.875rem;
+    }
 }
 
 .pending-error {
